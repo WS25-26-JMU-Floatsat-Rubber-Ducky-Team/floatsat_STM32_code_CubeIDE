@@ -18,6 +18,9 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "motor.h"
+#include "communication.h"
+#include "imu.h"
 #include "lsm9ds1_reg.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -42,6 +45,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
+IMU_t imu = {&hi2c1};
 
 SPI_HandleTypeDef hspi1;
 
@@ -49,19 +53,8 @@ TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
 TIM_HandleTypeDef htim2;   // step timer
+Motor_t motor1 = {&htim2, TIM2, &htim3, TIM3};
 
-#define SPI_FRAME_LEN 6   // 10 bytes (80 bits)
-#define LSM9DS1_AG_ADDR_READ  0xD7
-#define LSM9DS1_M_ADDR_READ   0x3D
-#define LSM9DS1_AG_ADDR_WRITE  0xD6
-#define LSM9DS1_M_ADDR_WRITE   0x3C
-#define CTRL_REG1_G   0x10
-#define OUT_G 0x18
-#define OUT_A 0x28
-#define WHO_AM_I 0x0F
-#define OUT_M 0x28
-#define CTRL_REG1_M   0x20
-#define CTRL_REG3_M   0x22
 
 uint8_t spi_rx_buf[SPI_FRAME_LEN];
 uint8_t spi_tx_buf[SPI_FRAME_LEN];
@@ -74,142 +67,16 @@ static void MX_GPIO_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_I2C1_Init(void);
-HAL_StatusTypeDef imu_write_reg(uint16_t devAddr, uint8_t reg, uint8_t value);
-HAL_StatusTypeDef imu_read_regs(uint16_t devAddr, uint8_t reg, uint8_t *buf,
-		uint16_t len);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static volatile uint8_t g_step = 1;  // 1..6
-static volatile uint32_t g_stepCounter = 0;
-volatile uint8_t rx_byte = 0;
 
-static inline void set_abc(uint8_t A, uint8_t B, uint8_t C) {
-	// Build BSRR: lower 16 bits = set, upper 16 bits = reset
-	uint32_t set = 0;
-	uint32_t rst = 0;
 
-	(A ? (set |= GPIO_PIN_12) : (rst |= GPIO_PIN_12));
-	(B ? (set |= GPIO_PIN_13) : (rst |= GPIO_PIN_13));
-	(C ? (set |= GPIO_PIN_14) : (rst |= GPIO_PIN_14));
-
-	GPIOB->BSRR = (set) | ((uint32_t) rst << 16);
-}
-
-// ------------ Required function ------------
-void Commutation_Step(uint8_t step) {
-	switch (step) {
-	case 1:
-		set_abc(1, 0, 0);
-		break; // HLL
-	case 2:
-		set_abc(1, 1, 0);
-		break; // HHL
-	case 3:
-		set_abc(0, 1, 0);
-		break; // LHL
-	case 4:
-		set_abc(0, 1, 1);
-		break; // LHH
-	case 5:
-		set_abc(0, 0, 1);
-		break; // LLH
-	case 6:
-		set_abc(1, 0, 1);
-		break; // HLH
-	default: // step 7
-	case 7:
-		set_abc(0, 0, 0);
-		break; // LLL
-	}
-}
 
 // ------------ Public API ------------
-void Commutation_Start(uint32_t step_hz); // start fixed-frequency commutation
-void Commutation_Stop(void);              // stop stepping (keeps last state)
-
-static void MX_GPIOB_Phases_Init(void) {
-	__HAL_RCC_GPIOB_CLK_ENABLE();
-
-	GPIO_InitTypeDef gi = { 0 };
-	gi.Pin = GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14;
-	gi.Mode = GPIO_MODE_OUTPUT_PP;
-	gi.Pull = GPIO_NOPULL;
-	gi.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(GPIOB, &gi);
-
-	// default to all low
-	set_abc(0, 0, 0);
-}
-
-static void MX_TIM3_PWM_CH2_Init_5pct(void) {
-	/* 1) Enable clocks */
-	__HAL_RCC_TIM3_CLK_ENABLE();
-	__HAL_RCC_GPIOB_CLK_ENABLE();
-
-	/* 2) GPIO config: PB5 -> TIM3_CH2 (AF2) */
-	GPIO_InitTypeDef GPIO_InitStruct = { 0 };
-	GPIO_InitStruct.Pin = GPIO_PIN_5;
-	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-	GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;   // check AF for your MCU
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-	/* 3) TIM3 base config */
-	// 16 MHz / (PSC+1) / (ARR+1) = 20 kHz
-	// PSC = 0 -> 16 MHz
-	// ARR = 799 -> 16 MHz / 800 = 20 kHz
-	htim3.Instance = TIM3;
-	htim3.Init.Prescaler = 0;
-	htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim3.Init.Period = 799;
-	htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-	htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-	HAL_TIM_PWM_Init(&htim3);
-
-	/* 4) PWM channel config: 5% duty on CH2 */
-	TIM_OC_InitTypeDef sConfigOC = { 0 };
-	sConfigOC.OCMode = TIM_OCMODE_PWM1;
-	sConfigOC.Pulse = (htim3.Init.Period + 1) * 5 / 100; // 5% of 800 = 40 set duty
-	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-	HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2);
-
-	/* 5) Start PWM */
-	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
-}
-
-static void MX_TIM2_StepTimer_Init(uint32_t step_hz) {
-	__HAL_RCC_TIM2_CLK_ENABLE();
-
-	const uint32_t timer_clk_hz = 16000000UL;
-	uint32_t psc = 1599;                           // 16 MHz / (1599+1) = 10 kHz
-	uint32_t tick = timer_clk_hz / (psc + 1);              // = 10 000
-
-	if (step_hz == 0)
-		step_hz = 1;                         // avoid div-by-zero
-
-	uint32_t arr = (tick / step_hz);
-	if (arr == 0)
-		arr = 1;                                 // limit max frequency
-	else
-		arr -= 1;
-
-	htim2.Instance = TIM2;
-	htim2.Init.Prescaler = psc;
-	htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim2.Init.Period = arr;
-	htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-	htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-	HAL_TIM_Base_Init(&htim2);
-
-	HAL_NVIC_SetPriority(TIM2_IRQn, 2, 0);
-	HAL_NVIC_EnableIRQ(TIM2_IRQn);
-}
 
 /*static void MX_LED_Init(void) {
  __HAL_RCC_GPIOC_CLK_ENABLE();
@@ -225,76 +92,15 @@ static void MX_TIM2_StepTimer_Init(uint32_t step_hz) {
  //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
  }*/
 
-void Commutation_Start(uint32_t step_hz) {
-	MX_GPIOB_Phases_Init();
-	MX_TIM3_PWM_CH2_Init_5pct();   // enable driver at 5% duty
-	MX_TIM2_StepTimer_Init(step_hz);
-	//MX_LED_Init();
-
-	g_step = 1;
-	Commutation_Step(g_step);
-
-	__HAL_TIM_CLEAR_FLAG(&htim2, TIM_FLAG_UPDATE);
-	HAL_TIM_Base_Start_IT(&htim2);
-}
-
-void Commutation_Stop(void) {
-	HAL_TIM_Base_Stop_IT(&htim2);
-	// keep last commutation state; if you want to de-energize:
-	set_abc(0, 0, 0);
-}
-
 void TIM2_IRQHandler(void) {
-	if (__HAL_TIM_GET_FLAG(&htim2, TIM_FLAG_UPDATE) != RESET) {
-		if (__HAL_TIM_GET_IT_SOURCE(&htim2, TIM_IT_UPDATE) != RESET) {
-			__HAL_TIM_CLEAR_IT(&htim2, TIM_IT_UPDATE);
-
-			// advance commutation step
-			g_step++;
-			if (g_step > 6)
-				g_step = 1;
-			Commutation_Step(g_step);
-
-			// --- LED toggle every 600 steps ---
-			/*g_stepCounter++;
-			 if (g_stepCounter >= 600) {
-			 g_stepCounter = 0;
-			 HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); // toggle LED (active-low)
-			 }*/
-		}
-	}
+	motor_irq(&motor1);
 }
 
-void Commutation_SetFrequency(uint32_t step_hz) {
-	if (step_hz < 1)
-		step_hz = 1;
-
-	uint32_t timer_clk = 16000000UL;     // 16 MHz
-	uint32_t psc = 1599;           // same as in MX_TIM2_StepTimer_Init
-	uint32_t tick = timer_clk / (psc + 1); // 10 000 Hz
-
-	uint32_t arr = tick / step_hz;
-	if (arr == 0)
-		arr = 1;
-	else
-		arr -= 1;
-
-	__HAL_TIM_SET_AUTORELOAD(&htim2, arr);
-	__HAL_TIM_SET_COUNTER(&htim2, 0);
-
+void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
+	if (hspi->Instance == SPI1) HAL_SPI_TransmitReceive_IT(&hspi1, spi_tx_buf, spi_rx_buf, SPI_FRAME_LEN);
 }
 
-void SetDuty_TIM3_CH2(uint8_t duty_percent) {
-	if (duty_percent > 95)
-		duty_percent = 95;
-	if (duty_percent < 50)
-		duty_percent = 50;
 
-	uint32_t arr = htim3.Init.Period + 1;     // ARR+1 is timer resolution
-	uint32_t pulse = (arr * duty_percent) / 100;
-
-	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, pulse);
-}
 /* USER CODE END 0 */
 
 /**
@@ -341,7 +147,7 @@ int main(void) {
 	float step = 0.05;      // how much to increase per loop
 	uint32_t delay_ms_motor1 = 50; // how fast to ramp
 	uint32_t delay_ms_imu = 50;
-	Commutation_Start(rps);
+	Commutation_Start(&motor1, rps);
 	uint32_t last_tick_motor = HAL_GetTick();
 	uint32_t last_tick_imu = HAL_GetTick();
 	uint32_t now = HAL_GetTick();
@@ -362,9 +168,7 @@ int main(void) {
 	 Commutation_Start(5 * 7 * 6);  // 5 RPS
 	 */
 
-	imu_write_reg(LSM9DS1_AG_ADDR_WRITE, CTRL_REG1_G, 0xcb);
-	imu_write_reg(LSM9DS1_M_ADDR_WRITE, CTRL_REG1_M, 0xfc);
-	imu_write_reg(LSM9DS1_M_ADDR_WRITE, CTRL_REG3_M, 0x00);
+	init_imu(&imu);
 
 	/* USER CODE END 2 */
 
@@ -387,19 +191,18 @@ int main(void) {
 				if (comm_freq < 1)
 					comm_freq = 1;
 
-				Commutation_SetFrequency(comm_freq);
+				Commutation_SetFrequency(&motor1, comm_freq);
 
 				float duty = 98.0f;
-				SetDuty_TIM3_CH2((uint8_t) duty);
+				SetDuty_TIM3_CH2(&motor1, (uint8_t) duty);
 			}
 
 		}
 
 		if ((HAL_GetTick() - last_tick_imu) >= delay_ms_imu) {
 			last_tick_imu = HAL_GetTick();
-			//imu_read_regs(LSM9DS1_AG_ADDR_READ, OUT_A, spi_tx_buf, 6);
-			imu_read_regs(LSM9DS1_M_ADDR_READ, OUT_M, spi_tx_buf, 6);
-			//imu_read_regs(LSM9DS1_M_ADDR_READ, CTRL_REG1_M, spi_tx_buf, 6);
+			//acc_gyro_read(&imu, OUT_A, spi_tx_buf, 6);
+			mag_read(&imu, OUT_M, spi_tx_buf, 6);
 			HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 		}
 		/* USER CODE END WHILE */
@@ -641,58 +444,6 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
-
-/*void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi) {
- if (hspi->Instance == SPI1) {
- HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
- // We just received 10 bytes in spi_rx_buf[]
-
- // Example: echo them back → copy RX to TX buffer
- for (uint8_t i = 0; i < SPI_FRAME_LEN; i++) {
- spi_tx_buf[i] = spi_rx_buf[i];
- //spi_tx_buf[i] = 1;
- }
- // Now send those 10 bytes back to the master
- // (master must start a new SPI transaction and provide clock)
- HAL_StatusTypeDef status = HAL_SPI_Transmit_IT(&hspi1, spi_tx_buf,
- SPI_FRAME_LEN);
- (void) status; // optionally check for HAL_OK
- }
- }
-
- void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi) {
- if (hspi->Instance == SPI1) {
- //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
- // Finished sending 10 bytes back.
- // Arm the SPI again to wait for the next 10-byte frame.
- HAL_SPI_Receive_IT(&hspi1, spi_rx_buf, SPI_FRAME_LEN);
- }
- }*/
-
-void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
-	if (hspi->Instance == SPI1) {
-		// Indicate transfer completed
-
-		//HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-		/*for (int i = 0; i < SPI_FRAME_LEN; i++) {
-		 spi_tx_buf[i] = spi_rx_buf[i];
-		 }*/
-		// Start the next transaction
-		HAL_SPI_TransmitReceive_IT(&hspi1, spi_tx_buf, spi_rx_buf,
-		SPI_FRAME_LEN);
-	}
-}
-
-HAL_StatusTypeDef imu_write_reg(uint16_t devAddr, uint8_t reg, uint8_t value) {
-	return HAL_I2C_Mem_Write(&hi2c1, devAddr, reg,
-	I2C_MEMADD_SIZE_8BIT, &value, 1, 100);
-}
-
-HAL_StatusTypeDef imu_read_regs(uint16_t devAddr, uint8_t reg, uint8_t *buf,
-		uint16_t len) {
-	return HAL_I2C_Mem_Read(&hi2c1, devAddr, reg,
-	I2C_MEMADD_SIZE_8BIT, buf, len, 100);
-}
 /* USER CODE END 4 */
 
 /**
