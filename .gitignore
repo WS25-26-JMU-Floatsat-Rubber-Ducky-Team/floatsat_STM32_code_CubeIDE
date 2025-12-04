@@ -1,0 +1,24 @@
+.metadata
+
+# Ignore build artifacts
+Debug
+*.o
+*.d
+*.su
+
+# IDE-specific files
+*.launch
+*.settings
+
+# Ignore compiled binaries and other build files
+*.elf
+*.bin
+*.map
+*.hex
+*.a
+*.lib
+*.exe
+*.out
+
+# Ignore configuration files that are auto-generated
+*/makefile
