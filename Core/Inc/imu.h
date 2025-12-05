@@ -1,6 +1,8 @@
+#ifndef __IMU_H
+#define __IMU_H
+
 #include "main.h"
 
-#define SPI_FRAME_LEN 6   // 10 bytes (80 bits)
 #define LSM9DS1_AG_ADDR_READ  0xD7
 #define LSM9DS1_M_ADDR_READ   0x3D
 #define LSM9DS1_AG_ADDR_WRITE  0xD6
@@ -22,3 +24,6 @@ typedef struct IMU {
 void init_imu(IMU_t *imu);
 HAL_StatusTypeDef acc_gyro_read(IMU_t *imu, uint8_t reg, uint8_t *buf, uint16_t len);
 HAL_StatusTypeDef mag_read(IMU_t *imu, uint8_t reg, uint8_t *buf, uint16_t len);
+
+
+#endif
