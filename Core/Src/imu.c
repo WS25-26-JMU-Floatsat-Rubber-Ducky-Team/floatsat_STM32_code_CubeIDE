@@ -25,7 +25,9 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 
 void init_imu(IMU_t *imu) {
 	acc_gyro_write(imu, CTRL_REG1_G, 0xcb);
+	HAL_Delay(10);
 	mag_write(imu, CTRL_REG1_M, 0xfc);
+	HAL_Delay(10);
 	mag_write(imu, CTRL_REG3_M, 0x00);
 }
 

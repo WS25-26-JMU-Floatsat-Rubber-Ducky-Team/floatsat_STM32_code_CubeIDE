@@ -10,8 +10,8 @@
 
 typedef struct COM {
 	SPI_HandleTypeDef *hspi;
-	uint8_t *spi_rx_buf[SPI_FRAME_LEN];
-	uint8_t *spi_tx_buf[SPI_FRAME_LEN];
+	uint8_t *spi_rx_buf;
+	uint8_t *spi_tx_buf;
 } COM_t;
 
 
