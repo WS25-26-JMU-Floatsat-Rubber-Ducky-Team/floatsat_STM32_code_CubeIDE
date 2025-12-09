@@ -48,10 +48,17 @@ I2C_HandleTypeDef hi2c1;
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim5;
 
 /* USER CODE BEGIN PV */
 TIM_HandleTypeDef htim2;   // step timer
-Motor_t motor1 = {&htim2, TIM2, &htim3, TIM3};
+Motor_t motor1 = {
+		&htim2, TIM2,
+		&htim3, TIM3,
+		GPIOB, GPIO_PIN_12,
+		GPIOB, GPIO_PIN_13,
+		GPIOB, GPIO_PIN_14,
+};
 
 IMU_t imu = {&hi2c1};
 
@@ -63,6 +70,10 @@ COM_t com = {
     .spi_tx_buf = spi_tx_buf
 };
 
+float rps = 1;         // start speed
+float target_rps = 17;   // end speed
+float step = 0.0001;      // how much to increase per loop
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,6 +82,7 @@ static void MX_GPIO_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_TIM5_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -95,6 +107,29 @@ static void MX_I2C1_Init(void);
  // Default LED OFF (PC13 = HIGH)
  //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
  }*/
+
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+	if (htim == &htim5) {
+		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+			if (rps < target_rps) {
+				rps += step;
+
+				float comm_freq_f = rps * 7.0f * 6.0f; // rps → electrical steps per sec
+				//float duty = rps * 3.90625 + 70; // rps * 60 to get rpm, then /128 because of kv rating, then /12 to get duty and then *100%
+
+				uint32_t comm_freq = (uint32_t) comm_freq_f;
+
+				if (comm_freq < 1)
+					comm_freq = 1;
+
+				Commutation_SetFrequency(&motor1, comm_freq);
+
+				float duty = 98.0f;
+				SetDuty_TIM3_CH2(&motor1, (uint8_t) duty);
+			}
+	}
+}
 
 void TIM2_IRQHandler(void) {
 	motor_irq(&motor1);
@@ -139,6 +174,7 @@ int main(void)
   MX_TIM3_Init();
   MX_SPI1_Init();
   MX_I2C1_Init();
+  MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
 	for (int i = 0; i < SPI_FRAME_LEN; i++) {
 		spi_rx_buf[i] = 0;
@@ -147,15 +183,7 @@ int main(void)
 		spi_tx_buf[i] = i + 1;
 	}
 
-	float rps = 1;         // start speed
-	float target_rps = 17;   // end speed
-	float step = 0.05;      // how much to increase per loop
-	uint32_t delay_ms_motor1 = 50; // how fast to ramp
-//	uint32_t delay_ms_imu = 50;
-	Commutation_Start(&motor1, rps);
-	uint32_t last_tick_motor = HAL_GetTick();
-//	uint32_t last_tick_imu = HAL_GetTick();
-	uint32_t now = HAL_GetTick();
+	Commutation_Start(&motor1, rps * 7.0f * 6.0f);
 
 	//HAL_SPI_Receive_IT(&hspi1, spi_rx_buf, SPI_FRAME_LEN); // wait for first 10 bytes
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
@@ -179,41 +207,10 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-	while (1) {
-		if (rps < target_rps) {
-			now = HAL_GetTick(); // current time in ms
-
-			if ((now - last_tick_motor) >= delay_ms_motor1) {
-				last_tick_motor = now;  // move to next slot
-
-				rps += step;
-
-				float comm_freq_f = rps * 7.0f * 6.0f; // rps → electrical steps per sec
-				//float duty = rps * 3.90625 + 70; // rps * 60 to get rpm, then /128 because of kv rating, then /12 to get duty and then *100%
-
-				uint32_t comm_freq = (uint32_t) comm_freq_f;
-
-				if (comm_freq < 1)
-					comm_freq = 1;
-
-				Commutation_SetFrequency(&motor1, comm_freq);
-
-				float duty = 98.0f;
-				SetDuty_TIM3_CH2(&motor1, (uint8_t) duty);
-			}
-
-		}
-
-//		if ((HAL_GetTick() - last_tick_imu) >= delay_ms_imu) {
-//			last_tick_imu = HAL_GetTick();
-//			//acc_gyro_read(&imu, OUT_A, spi_tx_buf, 6);
-//			mag_read(&imu, OUT_M, spi_tx_buf, 6);
-//			HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-//		}
+  while (1) {}
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	}
   /* USER CODE END 3 */
 }
 
@@ -394,6 +391,51 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/**
+  * @brief TIM5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM5_Init(void)
+{
+
+  /* USER CODE BEGIN TIM5_Init 0 */
+
+  /* USER CODE END TIM5_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM5_Init 1 */
+
+  /* USER CODE END TIM5_Init 1 */
+  htim5.Instance = TIM5;
+  htim5.Init.Prescaler = 15;
+  htim5.Init.CounterMode = TIM_COUNTERMODE_DOWN;
+  htim5.Init.Period = 2000;
+  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim5, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM5_Init 2 */
+
+  /* USER CODE END TIM5_Init 2 */
 
 }
 

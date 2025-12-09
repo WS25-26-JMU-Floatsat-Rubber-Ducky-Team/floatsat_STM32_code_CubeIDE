@@ -13,6 +13,7 @@
 #define WHO_AM_I 0x0F
 #define OUT_M 0x28
 #define CTRL_REG1_M   0x20
+#define CTRL_REG2_M   0x21
 #define CTRL_REG3_M   0x22
 
 
