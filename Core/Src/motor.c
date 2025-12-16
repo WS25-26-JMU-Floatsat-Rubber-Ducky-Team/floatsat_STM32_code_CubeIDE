@@ -151,17 +151,16 @@ void motor_irq(Motor_t *motor) {
 }
 
 void Commutation_SetFrequency(Motor_t *motor, float step_hz) {
-	if (step_hz < 1)
-		step_hz = 1;
+	if (step_hz < 1.1)
+		step_hz = 1.1;
 
-	uint32_t timer_clk = 16000000UL;     // 16 MHz
-	uint32_t psc = 15;           // same as in MX_TIM2_StepTimer_Init
-	uint32_t tick = timer_clk / (psc + 1); // 10 000 Hz
+	float timer_clk = 16000000UL;     // 16 MHz
+	float psc = 15;           // same as in MX_TIM2_StepTimer_Init
+	float tick = timer_clk / (psc + 1); // 1MHz
 
-	uint32_t arr = (uint32_t)(tick / step_hz);
+	uint32_t arr = (uint32_t)(tick / (step_hz - 1));
 
 	__HAL_TIM_SET_AUTORELOAD(motor->commutation_timer, arr);
-	__HAL_TIM_SET_COUNTER(motor->commutation_timer, arr);
 
 }
 

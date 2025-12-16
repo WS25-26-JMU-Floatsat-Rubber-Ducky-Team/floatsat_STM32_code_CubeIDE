@@ -91,8 +91,8 @@ COM_t com = {
 };
 
 float rps = 1;         // start speed
-float target_rps = 17;   // end speed
-float step = 0.0001;      // how much to increase per loop
+float target_rps = 20;   // end speed
+float step = 0.002;      // how much to increase per loop
 
 /* USER CODE END PV */
 
@@ -118,19 +118,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim == &htim1) {
 		if (rps < target_rps) {
 			rps += step;
-
-			float comm_freq_f = rps * 7.0f * 6.0f; // rps → electrical steps per sec
-			//float duty = rps * 3.90625 + 70; // rps * 60 to get rpm, then /128 because of kv rating, then /12 to get duty and then *100%
-
-			uint32_t comm_freq = (uint32_t) comm_freq_f;
-
-			if (comm_freq < 1)
-				comm_freq = 1;
-
+			float comm_freq = rps * 7.0f * 6.0f;
 			Commutation_SetFrequency(&motor1, comm_freq);
-
-			float duty = 98.0f;
-			SetDuty_TIM3_CH2(&motor1, (uint8_t) duty);
 		}
 	} else if (htim == &htim2) {
 		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
@@ -218,9 +207,6 @@ int main(void)
 	init_imu(&imu);
 
 	HAL_TIM_Base_Start_IT(&htim1);
-	HAL_TIM_Base_Start_IT(&htim2);
-	HAL_TIM_Base_Start_IT(&htim4);
-	HAL_TIM_Base_Start_IT(&htim10);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -376,7 +362,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 15;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 20000;
+  htim1.Init.Period = 10000;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
