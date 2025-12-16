@@ -92,7 +92,7 @@ COM_t com = {
 
 float rps = 1;         // start speed
 float target_rps = 20;   // end speed
-float step = 0.002;      // how much to increase per loop
+float step = 0.02;      // how much to increase per loop
 
 /* USER CODE END PV */
 
@@ -335,8 +335,6 @@ static void MX_SPI1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN SPI1_Init 2 */
-	HAL_NVIC_SetPriority(SPI1_IRQn, 0, 0);   // priority 5 is fine
-	HAL_NVIC_EnableIRQ(SPI1_IRQn);           // <<< CRITICAL
   /* USER CODE END SPI1_Init 2 */
 
 }
@@ -361,8 +359,8 @@ static void MX_TIM1_Init(void)
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 15;
-  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 10000;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_DOWN;
+  htim1.Init.Period = 2000;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -406,7 +404,7 @@ static void MX_TIM2_Init(void)
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 15;
-  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_DOWN;
   htim2.Init.Period = 4294967295;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -426,7 +424,6 @@ static void MX_TIM2_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM2_Init 2 */
-  HAL_NVIC_EnableIRQ(TIM2_IRQn);
   /* USER CODE END TIM2_Init 2 */
 
 }
@@ -451,7 +448,7 @@ static void MX_TIM3_Init(void)
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 0;
-  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_DOWN;
   htim3.Init.Period = 399;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -507,7 +504,7 @@ static void MX_TIM4_Init(void)
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
   htim4.Init.Prescaler = 15;
-  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_DOWN;
   htim4.Init.Period = 65535;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -527,7 +524,6 @@ static void MX_TIM4_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM4_Init 2 */
-  HAL_NVIC_EnableIRQ(TIM4_IRQn);
   /* USER CODE END TIM4_Init 2 */
 
 }
@@ -552,7 +548,7 @@ static void MX_TIM5_Init(void)
   /* USER CODE END TIM5_Init 1 */
   htim5.Instance = TIM5;
   htim5.Init.Prescaler = 0;
-  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim5.Init.CounterMode = TIM_COUNTERMODE_DOWN;
   htim5.Init.Period = 399;
   htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;

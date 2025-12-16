@@ -111,14 +111,11 @@ static void MX_TIM2_StepTimer_Init(Motor_t *motor, float step_hz) {
 
 	motor->commutation_timer->Instance = motor->commutation_timer_instance;
 	motor->commutation_timer->Init.Prescaler = psc;
-	motor->commutation_timer->Init.CounterMode = TIM_COUNTERMODE_UP;
+	motor->commutation_timer->Init.CounterMode = TIM_COUNTERMODE_DOWN;
 	motor->commutation_timer->Init.Period = arr;
 	motor->commutation_timer->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
 	motor->commutation_timer->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
 	HAL_TIM_Base_Init(motor->commutation_timer);
-
-	HAL_NVIC_SetPriority(TIM2_IRQn, 2, 0);
-	HAL_NVIC_EnableIRQ(TIM2_IRQn);
 }
 
 
@@ -151,17 +148,14 @@ void motor_irq(Motor_t *motor) {
 }
 
 void Commutation_SetFrequency(Motor_t *motor, float step_hz) {
-	if (step_hz < 1.1)
-		step_hz = 1.1;
+	if (step_hz < 1)
+		step_hz = 1;
 
 	float timer_clk = 16000000UL;     // 16 MHz
 	float psc = 15;           // same as in MX_TIM2_StepTimer_Init
 	float tick = timer_clk / (psc + 1); // 1MHz
 
-	uint32_t arr = (uint32_t)(tick / (step_hz - 1));
-
-	__HAL_TIM_SET_AUTORELOAD(motor->commutation_timer, arr);
-
+	motor->commutation_timer->Instance->ARR = (uint32_t)(tick / step_hz) -1;
 }
 
 void SetDuty_TIM3_CH2(Motor_t *motor, uint8_t duty_percent) {
