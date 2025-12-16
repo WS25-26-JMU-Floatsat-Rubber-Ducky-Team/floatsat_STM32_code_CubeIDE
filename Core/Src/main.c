@@ -116,7 +116,6 @@ static void MX_TIM11_Init(void);
 /* USER CODE BEGIN 0 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim == &htim1) {
-		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 		if (rps < target_rps) {
 			rps += step;
 
@@ -134,6 +133,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 			SetDuty_TIM3_CH2(&motor1, (uint8_t) duty);
 		}
 	} else if (htim == &htim2) {
+		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 		motor_irq(&motor1);
 	} else if (htim == &htim4) {
 		// motor_irq(&motor2);
@@ -196,6 +196,8 @@ int main(void)
 	}
 
 	Commutation_Start(&motor1, rps * 7.0f * 6.0f);
+	float duty = 98.0f;
+	SetDuty_TIM3_CH2(&motor1, (uint8_t) duty);
 
 	//HAL_SPI_Receive_IT(&hspi1, spi_rx_buf, SPI_FRAME_LEN); // wait for first 10 bytes
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
@@ -374,7 +376,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 15;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 2000;
+  htim1.Init.Period = 20000;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;

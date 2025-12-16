@@ -144,24 +144,10 @@ void Commutation_Stop(Motor_t *motor) {
 
 
 void motor_irq(Motor_t *motor) {
-	if (__HAL_TIM_GET_FLAG(motor->commutation_timer, TIM_FLAG_UPDATE) != RESET) {
-		if (__HAL_TIM_GET_IT_SOURCE(motor->commutation_timer, TIM_IT_UPDATE) != RESET) {
-			__HAL_TIM_CLEAR_IT(motor->commutation_timer, TIM_IT_UPDATE);
-
-			// advance commutation step
-			g_step++;
-			if (g_step > 6)
-				g_step = 1;
-			Commutation_Step(motor, g_step);
-
-			// --- LED toggle every 600 steps ---
-			/*g_stepCounter++;
-			 if (g_stepCounter >= 600) {
-			 g_stepCounter = 0;
-			 HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); // toggle LED (active-low)
-			 }*/
-		}
-	}
+	g_step++;
+	if (g_step > 6)
+		g_step = 1;
+	Commutation_Step(motor, g_step);
 }
 
 void Commutation_SetFrequency(Motor_t *motor, float step_hz) {
@@ -173,15 +159,9 @@ void Commutation_SetFrequency(Motor_t *motor, float step_hz) {
 	uint32_t tick = timer_clk / (psc + 1); // 10 000 Hz
 
 	uint32_t arr = (uint32_t)(tick / step_hz);
-	if (arr == 0) {
-		Commutation_Step(motor, g_step);
-		arr = 1;
-	} else {
-		arr -= 1;
-	}
 
 	__HAL_TIM_SET_AUTORELOAD(motor->commutation_timer, arr);
-	__HAL_TIM_SET_COUNTER(motor->commutation_timer, 0);
+	__HAL_TIM_SET_COUNTER(motor->commutation_timer, arr);
 
 }
 
