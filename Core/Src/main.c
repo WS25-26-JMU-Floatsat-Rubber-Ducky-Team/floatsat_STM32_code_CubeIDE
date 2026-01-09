@@ -52,32 +52,33 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim5;
-TIM_HandleTypeDef htim10;
-TIM_HandleTypeDef htim11;
 
 /* USER CODE BEGIN PV */
 Motor_t motor1 = {
 		&htim2, TIM2,
 		&htim3, TIM3,
-		GPIOB, GPIO_PIN_12,
-		GPIOB, GPIO_PIN_13,
-		GPIOB, GPIO_PIN_14,
+//		GPIOB, GPIO_PIN_12,
+//		GPIOB, GPIO_PIN_13,
+//		GPIOB, GPIO_PIN_14,
+		GPIOA, GPIO_PIN_9,
+		GPIOA, GPIO_PIN_10,
+		GPIOA, GPIO_PIN_11,
 };
 
 Motor_t motor2 = {
 		&htim4, TIM4,
-		&htim5, TIM5,
-		GPIOB, GPIO_PIN_12, //TODO
-		GPIOB, GPIO_PIN_13, //TODO
-		GPIOB, GPIO_PIN_14, //TODO
+		&htim3, TIM3,
+		GPIOA, GPIO_PIN_9,
+		GPIOA, GPIO_PIN_10,
+		GPIOA, GPIO_PIN_11,
 };
 
 Motor_t motor3 = {
-		&htim10, TIM10,
-		&htim11, TIM11,
-		GPIOB, GPIO_PIN_12, //TODO
-		GPIOB, GPIO_PIN_13, //TODO
-		GPIOB, GPIO_PIN_14, //TODO
+		&htim5, TIM5,
+		&htim3, TIM3,
+		GPIOA, GPIO_PIN_8,
+		GPIOC, GPIO_PIN_9,
+		GPIOC, GPIO_PIN_8,
 };
 
 IMU_t imu = {&hi2c1};
@@ -92,7 +93,7 @@ COM_t com = {
 
 float rps = 1;         // start speed
 float target_rps = 20;   // end speed
-float step = 0.02;      // how much to increase per loop
+float step = 0.01;      // how much to increase per loop
 
 /* USER CODE END PV */
 
@@ -106,8 +107,6 @@ static void MX_TIM5_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM4_Init(void);
-static void MX_TIM10_Init(void);
-static void MX_TIM11_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -120,14 +119,16 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 			rps += step;
 			float comm_freq = rps * 7.0f * 6.0f;
 			Commutation_SetFrequency(&motor1, comm_freq);
+//			Commutation_SetFrequency(&motor2, comm_freq);
+//			Commutation_SetFrequency(&motor3, comm_freq);
 		}
 	} else if (htim == &htim2) {
 		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 		motor_irq(&motor1);
 	} else if (htim == &htim4) {
-		// motor_irq(&motor2);
-	} else if (htim == &htim10) {
-		//motor_irq(&motor3);
+//		motor_irq(&motor2);
+	} else if (htim == &htim5) {
+//		motor_irq(&motor3);
 	}
 }
 
@@ -174,8 +175,6 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM2_Init();
   MX_TIM4_Init();
-  MX_TIM10_Init();
-  MX_TIM11_Init();
   /* USER CODE BEGIN 2 */
 	for (int i = 0; i < SPI_FRAME_LEN; i++) {
 		spi_rx_buf[i] = 0;
@@ -185,8 +184,12 @@ int main(void)
 	}
 
 	Commutation_Start(&motor1, rps * 7.0f * 6.0f);
+	Commutation_Start(&motor2, rps * 7.0f * 6.0f);
+	Commutation_Start(&motor3, rps * 7.0f * 6.0f);
 	float duty = 98.0f;
 	SetDuty_TIM3_CH2(&motor1, (uint8_t) duty);
+	SetDuty_TIM3_CH2(&motor2, (uint8_t) duty);
+	SetDuty_TIM3_CH2(&motor3, (uint8_t) duty);
 
 	//HAL_SPI_Receive_IT(&hspi1, spi_rx_buf, SPI_FRAME_LEN); // wait for first 10 bytes
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
@@ -360,7 +363,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 15;
   htim1.Init.CounterMode = TIM_COUNTERMODE_DOWN;
-  htim1.Init.Period = 2000;
+  htim1.Init.Period = 10000;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -547,9 +550,9 @@ static void MX_TIM5_Init(void)
 
   /* USER CODE END TIM5_Init 1 */
   htim5.Instance = TIM5;
-  htim5.Init.Prescaler = 0;
+  htim5.Init.Prescaler = 15;
   htim5.Init.CounterMode = TIM_COUNTERMODE_DOWN;
-  htim5.Init.Period = 399;
+  htim5.Init.Period = 65535;
   htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
@@ -570,67 +573,6 @@ static void MX_TIM5_Init(void)
   /* USER CODE BEGIN TIM5_Init 2 */
 
   /* USER CODE END TIM5_Init 2 */
-
-}
-
-/**
-  * @brief TIM10 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM10_Init(void)
-{
-
-  /* USER CODE BEGIN TIM10_Init 0 */
-
-  /* USER CODE END TIM10_Init 0 */
-
-  /* USER CODE BEGIN TIM10_Init 1 */
-
-  /* USER CODE END TIM10_Init 1 */
-  htim10.Instance = TIM10;
-  htim10.Init.Prescaler = 15;
-  htim10.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim10.Init.Period = 65535;
-  htim10.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim10.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim10) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM10_Init 2 */
-  /* USER CODE END TIM10_Init 2 */
-
-}
-
-/**
-  * @brief TIM11 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM11_Init(void)
-{
-
-  /* USER CODE BEGIN TIM11_Init 0 */
-
-  /* USER CODE END TIM11_Init 0 */
-
-  /* USER CODE BEGIN TIM11_Init 1 */
-
-  /* USER CODE END TIM11_Init 1 */
-  htim11.Instance = TIM11;
-  htim11.Init.Prescaler = 0;
-  htim11.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim11.Init.Period = 399;
-  htim11.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim11.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim11) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM11_Init 2 */
-
-  /* USER CODE END TIM11_Init 2 */
 
 }
 
