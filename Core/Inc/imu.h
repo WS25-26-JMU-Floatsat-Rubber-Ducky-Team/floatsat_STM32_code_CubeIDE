@@ -16,13 +16,18 @@
 #define CTRL_REG2_M   0x21
 #define CTRL_REG3_M   0x22
 
+#define IMU_BUFF_LEN 6
 
 typedef struct IMU {
 	I2C_HandleTypeDef *hi2c;
+	uint8_t *acc_buff;
+	uint8_t *gyro_buff;
+	uint8_t *mag_buff;
 } IMU_t;
 
 
 void init_imu(IMU_t *imu);
+void read_imu(IMU_t *imu);
 HAL_StatusTypeDef acc_gyro_read(IMU_t *imu, uint8_t reg, uint8_t *buf, uint16_t len);
 HAL_StatusTypeDef mag_read(IMU_t *imu, uint8_t reg, uint8_t *buf, uint16_t len);
 

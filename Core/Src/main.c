@@ -64,18 +64,23 @@ GPIOB, GPIO_PIN_13,
 GPIOB, GPIO_PIN_14, 0, 0, step };
 
 Motor_t motor2 = { &htim5, TIM5, &htim3, TIM3,
-GPIOA, GPIO_PIN_9, //TODO
-		GPIOA, GPIO_PIN_10, //TODO
-		GPIOA, GPIO_PIN_11, //TODO
+		GPIOA, GPIO_PIN_9,
+		GPIOA, GPIO_PIN_10,
+		GPIOA, GPIO_PIN_11,
 		0, 0, step };
 
 Motor_t motor3 = { &htim4, TIM4, &htim3, TIM3,
-GPIOB, GPIO_PIN_0, //TODO
-		GPIOB, GPIO_PIN_1, //TODO
-		GPIOB, GPIO_PIN_2, //TODO
+		GPIOB, GPIO_PIN_0,
+		GPIOB, GPIO_PIN_1,
+		GPIOB, GPIO_PIN_2,
 		0, 0, step };
 
-IMU_t imu = { &hi2c1 };
+
+uint8_t acc_buff[IMU_BUFF_LEN];
+uint8_t gyro_buff[IMU_BUFF_LEN];
+uint8_t mag_buff[IMU_BUFF_LEN];
+
+IMU_t imu = { .hi2c = &hi2c1, .acc_buff = acc_buff, .gyro_buff=gyro_buff, .mag_buff=mag_buff };
 
 uint8_t spi_rx_buf[SPI_FRAME_LEN];
 uint8_t spi_tx_buf[SPI_FRAME_LEN];
@@ -124,11 +129,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 	if (hspi->Instance == SPI1){
-		//comunicate(&com, &imu);
-		HAL_SPI_TransmitReceive_IT(&hspi1, spi_tx_buf, spi_rx_buf, SPI_FRAME_LEN);
-		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+		comunicate(&com, &imu);
 	}
 }
+
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
+	HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+	read_imu(&imu);
+}
+
 
 /* USER CODE END 0 */
 
@@ -177,12 +186,6 @@ int main(void)
   MX_TIM9_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-	for (int i = 0; i < SPI_FRAME_LEN; i++) {
-		spi_rx_buf[i] = 0;
-	}
-	for (int i = 0; i < SPI_FRAME_LEN; i++) {
-		spi_tx_buf[i] = 5;
-	}
 
 	Commutation_Start(&motor1, rps1 * 7.0f * 6.0f);
 	Commutation_Start(&motor2, rps2 * 7.0f * 6.0f);
@@ -193,8 +196,15 @@ int main(void)
 
 	//HAL_SPI_Receive_IT(&hspi1, spi_rx_buf, SPI_FRAME_LEN); // wait for first 10 bytes
 	init_imu(&imu);
+
 	HAL_TIM_Base_Start_IT(&htim1);
 
+	for (int i = 0; i < SPI_FRAME_LEN; i++) {
+		spi_rx_buf[i] = 0;
+	}
+	for (int i = 0; i < SPI_FRAME_LEN; i++) {
+		spi_tx_buf[i] = i;
+	}
 	HAL_SPI_TransmitReceive_IT(&hspi1, spi_tx_buf, spi_rx_buf, SPI_FRAME_LEN);
 
   /* USER CODE END 2 */
@@ -208,6 +218,7 @@ int main(void)
 	int target1 = -20;
 	int target2 = 20;
 	while (1) {
+		read_imu(&imu);
 		if (HAL_GetTick() - time_previous < t1) {
 			setTarget(&motor1, target1);
 			setTarget(&motor2, target1);

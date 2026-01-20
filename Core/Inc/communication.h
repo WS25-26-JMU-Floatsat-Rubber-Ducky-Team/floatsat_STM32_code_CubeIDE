@@ -1,7 +1,7 @@
 #include "main.h"
 #include "imu.h"
 
-#define SPI_FRAME_LEN 1   // 10 bytes (80 bits)
+#define SPI_FRAME_LEN 6   // 10 bytes (80 bits)
 
 #define READ_RAW_ACC 1
 #define READ_RAW_GYRO 2
