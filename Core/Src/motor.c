@@ -1,10 +1,64 @@
 #include "motor.h"
 #include "lsm9ds1_reg.h"
 
-static volatile uint8_t g_step = 1;  // 1..6
-static volatile uint32_t g_stepCounter = 0;
 volatile uint8_t rx_byte = 0;
 
+/*static void EnableTimerClock(TIM_TypeDef *tim)
+{
+    if (tim == TIM1)      __HAL_RCC_TIM1_CLK_ENABLE();
+    else if (tim == TIM2) __HAL_RCC_TIM2_CLK_ENABLE();
+    else if (tim == TIM3) __HAL_RCC_TIM3_CLK_ENABLE();
+    else if (tim == TIM4) __HAL_RCC_TIM4_CLK_ENABLE();
+    else if (tim == TIM5) __HAL_RCC_TIM5_CLK_ENABLE();
+    else if (tim == TIM9) __HAL_RCC_TIM9_CLK_ENABLE();
+    else if (tim == TIM10) __HAL_RCC_TIM10_CLK_ENABLE();
+    else if (tim == TIM11) __HAL_RCC_TIM11_CLK_ENABLE();
+    // add others if you use them
+}*/
+
+void setTarget(Motor_t *m, float target_rps)
+{
+    m->target_rps = target_rps;
+}
+
+void setStep(Motor_t *m, float rps_step)
+{
+    if (rps_step < 0.0f) rps_step = 0.0f;
+    m->rps_step = rps_step;
+}
+
+void Motor_ControlTick(Motor_t *m)
+{
+    /* 1. Ramp rps toward target_rps (can be negative) */
+    if (m->rps < m->target_rps) {
+        m->rps += m->rps_step;
+        if (m->rps > m->target_rps)
+            m->rps = m->target_rps;
+    }
+    else if (m->rps > m->target_rps) {
+        m->rps -= m->rps_step;
+        if (m->rps < m->target_rps)
+            m->rps = m->target_rps;
+    }
+
+    /* 2. Update direction from sign of rps */
+    if (m->rps >= 0.0f) {
+        m->cw = true;
+    } else {
+        m->cw = false;
+    }
+
+    /* 3. Use absolute speed for commutation frequency */
+    float abs_rps = (m->rps >= 0.0f) ? m->rps : -m->rps;
+
+    if (abs_rps < 0.37f) {
+        Commutation_SetFrequency(m, 0.37f*42.0f);   // idle minimum
+        return;
+    }
+
+    /* 4. Mechanical RPS → electrical commutation frequency */
+    Commutation_SetFrequency(m, abs_rps * 7.0f * 6.0f);
+}
 
 void set_abc(Motor_t *motor, uint8_t A, uint8_t B, uint8_t C) {
 	HAL_GPIO_WritePin(motor->GPIOx_A, motor->GPIO_Pin_A, A ? GPIO_PIN_SET: GPIO_PIN_RESET);
@@ -12,45 +66,24 @@ void set_abc(Motor_t *motor, uint8_t A, uint8_t B, uint8_t C) {
 	HAL_GPIO_WritePin(motor->GPIOx_C, motor->GPIO_Pin_C, C ? GPIO_PIN_SET: GPIO_PIN_RESET);
 }
 
-static void MX_GPIOB_Phases_Init(Motor_t *motor) {
-	__HAL_RCC_GPIOB_CLK_ENABLE();
+void Commutation_Step(Motor_t *motor)
+{
+    uint8_t s = motor->step;   // 1..6
 
-	GPIO_InitTypeDef gi = { 0 };
-	gi.Pin = GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14;
-	gi.Mode = GPIO_MODE_OUTPUT_PP;
-	gi.Pull = GPIO_NOPULL;
-	gi.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(GPIOB, &gi);
+    // Reverse mapping for CCW: 1<->6, 2<->5, 3<->4
+    if (!motor->cw) {
+        s = 7 - s;
+    }
 
-	// default to all low
-	set_abc(motor, 0, 0, 0);
-}
-
-void Commutation_Step(Motor_t *motor, uint8_t step) {
-	switch (step) {
-	case 1:
-		set_abc(motor, 1, 0, 0);
-		break; // HLL
-	case 2:
-		set_abc(motor, 1, 1, 0);
-		break; // HHL
-	case 3:
-		set_abc(motor, 0, 1, 0);
-		break; // LHL
-	case 4:
-		set_abc(motor, 0, 1, 1);
-		break; // LHH
-	case 5:
-		set_abc(motor, 0, 0, 1);
-		break; // LLH
-	case 6:
-		set_abc(motor, 1, 0, 1);
-		break; // HLH
-	default: // step 7
-	case 7:
-		set_abc(motor, 0, 0, 0);
-		break; // LLL
-	}
+    switch (s) {
+    case 1: set_abc(motor, 1, 0, 0); break; // HLL
+    case 2: set_abc(motor, 1, 1, 0); break; // HHL
+    case 3: set_abc(motor, 0, 1, 0); break; // LHL
+    case 4: set_abc(motor, 0, 1, 1); break; // LHH
+    case 5: set_abc(motor, 0, 0, 1); break; // LLH
+    case 6: set_abc(motor, 1, 0, 1); break; // HLH
+    default: set_abc(motor, 0, 0, 0); break;
+    }
 }
 
 static void MX_TIM3_PWM_CH2_Init_5pct(Motor_t *motor) {
@@ -63,7 +96,7 @@ static void MX_TIM3_PWM_CH2_Init_5pct(Motor_t *motor) {
 	GPIO_InitStruct.Pin = GPIO_PIN_5;
 	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	Commutation_Step(motor, g_step);
+	Commutation_Step(motor);
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
 	GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;   // check AF for your MCU
 	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -94,8 +127,6 @@ static void MX_TIM3_PWM_CH2_Init_5pct(Motor_t *motor) {
 }
 
 static void MX_TIM2_StepTimer_Init(Motor_t *motor, float step_hz) {
-	__HAL_RCC_TIM2_CLK_ENABLE();
-
 	const uint32_t timer_clk_hz = 16000000UL;
 	uint32_t psc = 15;                           // 16 MHz / (15+1) = 1 MHz
 	float tick = timer_clk_hz / (psc + 1);              // = 1 000 000
@@ -118,19 +149,16 @@ static void MX_TIM2_StepTimer_Init(Motor_t *motor, float step_hz) {
 	HAL_TIM_Base_Init(motor->commutation_timer);
 }
 
-
 void Commutation_Start(Motor_t *motor, float step_hz) {
-	MX_GPIOB_Phases_Init(motor);
 	MX_TIM3_PWM_CH2_Init_5pct(motor);   // enable driver at 5% duty
 	MX_TIM2_StepTimer_Init(motor, step_hz);
-	//MX_LED_Init();
 
-	g_step = 1;
-	Commutation_Step(motor, g_step);
+	motor -> step = 1;
+	Commutation_Step(motor);
 
 	__HAL_TIM_CLEAR_FLAG(motor->commutation_timer, TIM_FLAG_UPDATE);
 	HAL_TIM_Base_Start_IT(motor->commutation_timer);
-	Commutation_Step(motor, g_step);
+	Commutation_Step(motor);
 }
 
 void Commutation_Stop(Motor_t *motor) {
@@ -139,12 +167,11 @@ void Commutation_Stop(Motor_t *motor) {
 	set_abc(motor, 0, 0, 0);
 }
 
-
 void motor_irq(Motor_t *motor) {
-	g_step++;
-	if (g_step > 6)
-		g_step = 1;
-	Commutation_Step(motor, g_step);
+	motor -> step++;
+	if (motor -> step > 6)
+		motor -> step = 1;
+	Commutation_Step(motor);
 }
 
 void Commutation_SetFrequency(Motor_t *motor, float step_hz) {
@@ -155,12 +182,12 @@ void Commutation_SetFrequency(Motor_t *motor, float step_hz) {
 	float psc = 15;           // same as in MX_TIM2_StepTimer_Init
 	float tick = timer_clk / (psc + 1); // 1MHz
 
-	motor->commutation_timer->Instance->ARR = (uint32_t)(tick / step_hz) -1;
+	motor->commutation_timer->Instance->ARR = (uint32_t)(tick / step_hz) - 1;
 }
 
 void SetDuty_TIM3_CH2(Motor_t *motor, uint8_t duty_percent) {
-	if (duty_percent > 95)
-		duty_percent = 95;
+	if (duty_percent > 98)
+		duty_percent = 98;
 	if (duty_percent < 50)
 		duty_percent = 50;
 
@@ -169,4 +196,3 @@ void SetDuty_TIM3_CH2(Motor_t *motor, uint8_t duty_percent) {
 
 	__HAL_TIM_SET_COMPARE(motor->pwm_timer, TIM_CHANNEL_2, pulse);
 }
-

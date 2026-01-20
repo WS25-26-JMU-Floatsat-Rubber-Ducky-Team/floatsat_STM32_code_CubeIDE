@@ -2,7 +2,6 @@
 
 # Ignore build artifacts
 Debug
-Drivers
 *.o
 *.d
 *.su
@@ -23,4 +22,3 @@ Drivers
 
 # Ignore configuration files that are auto-generated
 */makefile
-

@@ -24,6 +24,7 @@
 #include "motor.h"
 #include "imu.h"
 #include "communication.h"
+#include "control.h"
 
 /* USER CODE END Includes */
 
@@ -52,48 +53,41 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim5;
+TIM_HandleTypeDef htim9;
 
 /* USER CODE BEGIN PV */
-Motor_t motor1 = {
-		&htim2, TIM2,
-		&htim3, TIM3,
-//		GPIOB, GPIO_PIN_12,
-//		GPIOB, GPIO_PIN_13,
-//		GPIOB, GPIO_PIN_14,
-		GPIOA, GPIO_PIN_9,
-		GPIOA, GPIO_PIN_10,
-		GPIOA, GPIO_PIN_11,
-};
+const float step = 0.01;      // how much to increase per loop
 
-Motor_t motor2 = {
-		&htim4, TIM4,
-		&htim3, TIM3,
-		GPIOA, GPIO_PIN_9,
-		GPIOA, GPIO_PIN_10,
-		GPIOA, GPIO_PIN_11,
-};
+Motor_t motor1 = { &htim2, TIM2, &htim3, TIM3,
+GPIOB, GPIO_PIN_12,
+GPIOB, GPIO_PIN_13,
+GPIOB, GPIO_PIN_14, 0, 0, step };
 
-Motor_t motor3 = {
-		&htim5, TIM5,
-		&htim3, TIM3,
-		GPIOA, GPIO_PIN_8,
-		GPIOC, GPIO_PIN_9,
-		GPIOC, GPIO_PIN_8,
-};
+Motor_t motor2 = { &htim5, TIM5, &htim3, TIM3,
+GPIOA, GPIO_PIN_9, //TODO
+		GPIOA, GPIO_PIN_10, //TODO
+		GPIOA, GPIO_PIN_11, //TODO
+		0, 0, step };
 
-IMU_t imu = {&hi2c1};
+Motor_t motor3 = { &htim4, TIM4, &htim3, TIM3,
+GPIOB, GPIO_PIN_0, //TODO
+		GPIOB, GPIO_PIN_1, //TODO
+		GPIOB, GPIO_PIN_2, //TODO
+		0, 0, step };
+
+IMU_t imu = { &hi2c1 };
 
 uint8_t spi_rx_buf[SPI_FRAME_LEN];
 uint8_t spi_tx_buf[SPI_FRAME_LEN];
-COM_t com = {
-    .hspi = &hspi1,
-    .spi_rx_buf = spi_rx_buf,
-    .spi_tx_buf = spi_tx_buf
-};
+COM_t com =
+		{ .hspi = &hspi1, .spi_rx_buf = spi_rx_buf, .spi_tx_buf = spi_tx_buf };
 
-float rps = 1;         // start speed
-float target_rps = 20;   // end speed
-float step = 0.01;      // how much to increase per loop
+float rps1 = 1;         // start speed
+float target_rps1 = 20;   // end speed
+float rps2 = 1;         // start speed
+float target_rps2 = 20;   // end speed
+float rps3 = 1;         // start speed
+float target_rps3 = 20;   // end speed
 
 /* USER CODE END PV */
 
@@ -103,9 +97,10 @@ static void MX_GPIO_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_TIM5_Init(void);
-static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_TIM1_Init(void);
+static void MX_TIM5_Init(void);
+static void MX_TIM9_Init(void);
 static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -115,27 +110,25 @@ static void MX_TIM4_Init(void);
 /* USER CODE BEGIN 0 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim == &htim1) {
-		if (rps < target_rps) {
-			rps += step;
-			float comm_freq = rps * 7.0f * 6.0f;
-			Commutation_SetFrequency(&motor1, comm_freq);
-//			Commutation_SetFrequency(&motor2, comm_freq);
-//			Commutation_SetFrequency(&motor3, comm_freq);
-		}
+		Motor_ControlTick(&motor1);
+		Motor_ControlTick(&motor2);
+		Motor_ControlTick(&motor3);
 	} else if (htim == &htim2) {
-		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 		motor_irq(&motor1);
-	} else if (htim == &htim4) {
-//		motor_irq(&motor2);
 	} else if (htim == &htim5) {
-//		motor_irq(&motor3);
+		motor_irq(&motor2);
+	} else if (htim == &htim4) {
+		motor_irq(&motor3);
 	}
 }
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
-	if (hspi->Instance == SPI1) comunicate(&com, &imu);
+	if (hspi->Instance == SPI1){
+		//comunicate(&com, &imu);
+		HAL_SPI_TransmitReceive_IT(&hspi1, spi_tx_buf, spi_rx_buf, SPI_FRAME_LEN);
+		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+	}
 }
-
 
 /* USER CODE END 0 */
 
@@ -147,6 +140,13 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+	setTarget(&motor1, 1);
+	setTarget(&motor2, 1);
+	setTarget(&motor3, 1);
+
+	setStep(&motor1, step);
+	setStep(&motor2, step);
+	setStep(&motor3, step);
 
   /* USER CODE END 1 */
 
@@ -171,50 +171,60 @@ int main(void)
   MX_TIM3_Init();
   MX_SPI1_Init();
   MX_I2C1_Init();
-  MX_TIM5_Init();
-  MX_TIM1_Init();
   MX_TIM2_Init();
+  MX_TIM1_Init();
+  MX_TIM5_Init();
+  MX_TIM9_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 	for (int i = 0; i < SPI_FRAME_LEN; i++) {
 		spi_rx_buf[i] = 0;
 	}
 	for (int i = 0; i < SPI_FRAME_LEN; i++) {
-		spi_tx_buf[i] = i + 1;
+		spi_tx_buf[i] = 5;
 	}
 
-	Commutation_Start(&motor1, rps * 7.0f * 6.0f);
-	Commutation_Start(&motor2, rps * 7.0f * 6.0f);
-	Commutation_Start(&motor3, rps * 7.0f * 6.0f);
-	float duty = 98.0f;
-	SetDuty_TIM3_CH2(&motor1, (uint8_t) duty);
-	SetDuty_TIM3_CH2(&motor2, (uint8_t) duty);
-	SetDuty_TIM3_CH2(&motor3, (uint8_t) duty);
+	Commutation_Start(&motor1, rps1 * 7.0f * 6.0f);
+	Commutation_Start(&motor2, rps2 * 7.0f * 6.0f);
+	Commutation_Start(&motor3, rps3 * 7.0f * 6.0f);
+
+	uint8_t duty = 98;
+	SetDuty_TIM3_CH2(&motor1, duty);
 
 	//HAL_SPI_Receive_IT(&hspi1, spi_rx_buf, SPI_FRAME_LEN); // wait for first 10 bytes
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+	init_imu(&imu);
+	HAL_TIM_Base_Start_IT(&htim1);
+
 	HAL_SPI_TransmitReceive_IT(&hspi1, spi_tx_buf, spi_rx_buf, SPI_FRAME_LEN);
 
-	/*
-	 Commutation_Start(1 * 7 * 6);  // 1 RPS
-	 HAL_Delay(1000);
-	 Commutation_Start(2 * 7 * 6);  // 2 RPS
-	 HAL_Delay(1000);
-	 Commutation_Start(3 * 7 * 6);  // 3 RPS
-	 HAL_Delay(1000);
-	 Commutation_Start(4 * 7 * 6);  // 4 RPS
-	 HAL_Delay(1000);
-	 Commutation_Start(5 * 7 * 6);  // 5 RPS
-	 */
-
-	init_imu(&imu);
-
-	HAL_TIM_Base_Start_IT(&htim1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1) {}
+	int time_previous = HAL_GetTick();
+
+	int t1 = 5000;
+	int t2 = 15000;
+	int target1 = -20;
+	int target2 = 20;
+	while (1) {
+		if (HAL_GetTick() - time_previous < t1) {
+			setTarget(&motor1, target1);
+			setTarget(&motor2, target1);
+			setTarget(&motor3, target1);
+		}
+		if (HAL_GetTick() - time_previous < t2
+				&& HAL_GetTick() - time_previous > t1) {
+			setTarget(&motor1, target2);
+			setTarget(&motor2, target2);
+			setTarget(&motor3, target2);
+		}
+		if (HAL_GetTick() - time_previous > t2) {
+			setTarget(&motor1, target1);
+			setTarget(&motor2, target1);
+			setTarget(&motor3, target1);
+		}
+	}
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -338,6 +348,8 @@ static void MX_SPI1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN SPI1_Init 2 */
+	HAL_NVIC_SetPriority(SPI1_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(SPI1_IRQn);
   /* USER CODE END SPI1_Init 2 */
 
 }
@@ -363,7 +375,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 15;
   htim1.Init.CounterMode = TIM_COUNTERMODE_DOWN;
-  htim1.Init.Period = 10000;
+  htim1.Init.Period = 2000;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -383,6 +395,7 @@ static void MX_TIM1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM1_Init 2 */
+
   /* USER CODE END TIM1_Init 2 */
 
 }
@@ -477,10 +490,6 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
-  {
-    Error_Handler();
-  }
   /* USER CODE BEGIN TIM3_Init 2 */
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
@@ -506,7 +515,7 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 15;
+  htim4.Init.Prescaler = 0;
   htim4.Init.CounterMode = TIM_COUNTERMODE_DOWN;
   htim4.Init.Period = 65535;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -527,6 +536,7 @@ static void MX_TIM4_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM4_Init 2 */
+
   /* USER CODE END TIM4_Init 2 */
 
 }
@@ -552,7 +562,7 @@ static void MX_TIM5_Init(void)
   htim5.Instance = TIM5;
   htim5.Init.Prescaler = 15;
   htim5.Init.CounterMode = TIM_COUNTERMODE_DOWN;
-  htim5.Init.Period = 65535;
+  htim5.Init.Period = 4294967295;
   htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
@@ -577,6 +587,44 @@ static void MX_TIM5_Init(void)
 }
 
 /**
+  * @brief TIM9 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM9_Init(void)
+{
+
+  /* USER CODE BEGIN TIM9_Init 0 */
+
+  /* USER CODE END TIM9_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+
+  /* USER CODE BEGIN TIM9_Init 1 */
+
+  /* USER CODE END TIM9_Init 1 */
+  htim9.Instance = TIM9;
+  htim9.Init.Prescaler = 0;
+  htim9.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim9.Init.Period = 65535;
+  htim9.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim9.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim9) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim9, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM9_Init 2 */
+
+  /* USER CODE END TIM9_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -594,23 +642,26 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13|GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_12
+                          |GPIO_PIN_13|GPIO_PIN_14, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_11, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : PC13 PC8 PC9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_13|GPIO_PIN_8|GPIO_PIN_9;
+  /*Configure GPIO pins : PC13 PC7 PC8 PC9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB12 PB13 PB14 */
-  GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14;
+  /*Configure GPIO pins : PB0 PB1 PB2 PB12
+                           PB13 PB14 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_12
+                          |GPIO_PIN_13|GPIO_PIN_14;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -650,7 +701,8 @@ void Error_Handler(void)
 	}
   /* USER CODE END Error_Handler_Debug */
 }
-#ifdef USE_FULL_ASSERT
+
+#ifdef  USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.

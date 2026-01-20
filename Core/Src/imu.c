@@ -34,4 +34,3 @@ void init_imu(IMU_t *imu) {
 	HAL_Delay(20);
 	mag_write(imu, CTRL_REG3_M, 0x00);
 }
-
