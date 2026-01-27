@@ -214,7 +214,11 @@ int main(void)
 	int t1 = 5000;
 	int target1 = 10; // max ~20
 	while (1) {
-		if (read_imu(&imu) != HAL_OK) MX_I2C1_Init();
+		if (read_imu(&imu) != HAL_OK){
+			MX_I2C1_Init();
+		} else {
+			parse_imu(&imu);
+		}
 		HAL_Delay(2);
 		if (HAL_GetTick() - time_previous < t1) {
 			setTarget(&motor1, target1);

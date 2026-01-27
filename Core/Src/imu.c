@@ -38,6 +38,27 @@ HAL_StatusTypeDef read_imu(IMU_t *imu){
 }
 
 
+void parse_imu(IMU_t *imu) {
+	int16_t raw_accel_x = (((uint16_t)imu->acc_buff[0]) << 8) + (uint16_t)imu->acc_buff[1];
+	int16_t raw_accel_y = (((uint16_t)imu->acc_buff[2]) << 8) + (uint16_t)imu->acc_buff[3];
+	int16_t raw_accel_z = (((uint16_t)imu->acc_buff[4]) << 8) + (uint16_t)imu->acc_buff[5];
+
+	int16_t raw_gyro_x = (((uint16_t)imu->gyro_buff[0]) << 8) + (uint16_t)imu->gyro_buff[1];
+	int16_t raw_gyro_y = (((uint16_t)imu->gyro_buff[2]) << 8) + (uint16_t)imu->gyro_buff[3];
+	int16_t raw_gyro_z = (((uint16_t)imu->gyro_buff[4]) << 8) + (uint16_t)imu->gyro_buff[5];
+
+	float accel_x = ((float)raw_accel_x) * 0.000061; // mg/LSB to g
+	float accel_y = ((float)raw_accel_y) * 0.000061; // mg/LSB to g
+	float accel_z = ((float)raw_accel_z) * 0.000061; // mg/LSB to g
+	float gyro_x = ((float)raw_gyro_x) * 0.01750; // mdps / LSB to dps
+	float gyro_y = ((float)raw_gyro_y) * 0.01750; // mdps / LSB to dps
+	float gyro_z = ((float)raw_gyro_z) * 0.01750; // mdps / LSB to dps
+
+	// TODO put values in some struct!
+
+}
+
+
 //void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c) {
 //	// TODO probably needs to be in main and call a function here. -> pass reference to imu
 //}
