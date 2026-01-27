@@ -27,7 +27,7 @@ typedef struct IMU {
 
 
 void init_imu(IMU_t *imu);
-void read_imu(IMU_t *imu);
+HAL_StatusTypeDef read_imu(IMU_t *imu);
 HAL_StatusTypeDef acc_gyro_read(IMU_t *imu, uint8_t reg, uint8_t *buf, uint16_t len);
 HAL_StatusTypeDef mag_read(IMU_t *imu, uint8_t reg, uint8_t *buf, uint16_t len);
 

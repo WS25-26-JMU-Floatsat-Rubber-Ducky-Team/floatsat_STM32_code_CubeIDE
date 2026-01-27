@@ -28,11 +28,6 @@ static quat_t quat_mul(quat_t a, quat_t b)
     return r;
 }
 
-static float radps_to_rpm(float w)
-{
-    return w * (60.0f / (2.0f * (float)M_PI));
-}
-
 /* =========================
  * Initialization
  * ========================= */
@@ -148,38 +143,58 @@ static void rate_controller(
 
 static void allocate_torque(
     const control_params_t *p,
-    const vec3_t *tau_body,
+    vec3_t *tau_body,
     float motor_tau[3]
 )
 {
-    for (int i = 0; i < 3; i++) {
-        float dot =
-            p->wheel_axis[i][0] * tau_body->v[0] +
-            p->wheel_axis[i][1] * tau_body->v[1] +
-            p->wheel_axis[i][2] * tau_body->v[2];
+    float motor_tau_pred[3];
+    float scale = 1.0f;
 
-        motor_tau[i] = -dot;
+    /* --- Predict wheel torques (no clamping) --- */
+    for (int i = 0; i < 3; i++) {
+        motor_tau_pred[i] =
+            -(p->wheel_axis[i][0] * tau_body->v[0] +
+              p->wheel_axis[i][1] * tau_body->v[1] +
+              p->wheel_axis[i][2] * tau_body->v[2]);
+
+        float ratio = fabsf(motor_tau_pred[i]) / p->max_motor_torque;
+        if (ratio > scale) {
+            scale = ratio;
+        }
+    }
+
+    /* --- Scale body torque if needed --- */
+    if (scale > 1.0f) {
+        float inv = 1.0f / scale;
+        for (int i = 0; i < 3; i++) {
+            tau_body->v[i] *= inv;
+            motor_tau_pred[i] *= inv;
+        }
+    }
+
+    /* --- Final motor torques (with hard safety clamp) --- */
+    for (int i = 0; i < 3; i++) {
         motor_tau[i] = clamp(
-            motor_tau[i],
+            motor_tau_pred[i],
             -p->max_motor_torque,
              p->max_motor_torque
         );
     }
 }
 
-
-void control_step(
-    control_state_t       *state,
+vec3_t control_step(
+    control_state_t        *state,
     const control_params_t *params,
-    const quat_t          *q_current,
-    const quat_t          *q_setpoint,
-    const vec3_t          *omega_meas,
-    float                 motor_rpm_out[3]
+    const quat_t           *q_current,
+    const quat_t           *q_setpoint,
+    const vec3_t           *omega_meas,
+    float                   omega_body_z_cmd
 )
 {
     vec3_t omega_cmd;
     vec3_t tau_body;
     float motor_tau[3];
+    vec3_t motor_rpm;
 
     angle_controller(
         &state->angle_pid,
@@ -188,6 +203,9 @@ void control_step(
         q_setpoint,
         &omega_cmd
     );
+
+    /* Body-frame Z spin */
+    omega_cmd.v[2] += omega_body_z_cmd;
 
     rate_controller(
         &state->rate_pid,
@@ -204,11 +222,13 @@ void control_step(
     );
 
     for (int i = 0; i < 3; i++) {
-        motor_rpm_out[i] = radps_to_rpm(motor_tau[i]);
-        motor_rpm_out[i] = clamp(
-            motor_rpm_out[i],
+        float rpm = motor_tau[i] * params->torque_to_rpm;
+        motor_rpm.v[i] = clamp(
+            rpm,
             -params->max_motor_rpm,
              params->max_motor_rpm
         );
     }
+
+    return motor_rpm;
 }

@@ -147,7 +147,6 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
   */
 int main(void)
 {
-
   /* USER CODE BEGIN 1 */
 	setTarget(&motor1, 1);
 	setTarget(&motor2, 1);
@@ -165,14 +164,13 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+  HAL_Delay(500);
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -214,23 +212,11 @@ int main(void)
 	int time_previous = HAL_GetTick();
 
 	int t1 = 5000;
-	int t2 = 15000;
-	int target1 = -20;
-	int target2 = 20;
+	int target1 = 10; // max ~20
 	while (1) {
-		read_imu(&imu);
+		if (read_imu(&imu) != HAL_OK) MX_I2C1_Init();
+		HAL_Delay(2);
 		if (HAL_GetTick() - time_previous < t1) {
-			setTarget(&motor1, target1);
-			setTarget(&motor2, target1);
-			setTarget(&motor3, target1);
-		}
-		if (HAL_GetTick() - time_previous < t2
-				&& HAL_GetTick() - time_previous > t1) {
-			setTarget(&motor1, target2);
-			setTarget(&motor2, target2);
-			setTarget(&motor3, target2);
-		}
-		if (HAL_GetTick() - time_previous > t2) {
 			setTarget(&motor1, target1);
 			setTarget(&motor2, target1);
 			setTarget(&motor3, target1);
