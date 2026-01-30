@@ -170,7 +170,7 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-  HAL_Delay(500);
+  HAL_Delay(1000);
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -193,7 +193,11 @@ int main(void)
 	SetDuty_TIM3_CH2(&motor1, duty);
 
 	//HAL_SPI_Receive_IT(&hspi1, spi_rx_buf, SPI_FRAME_LEN); // wait for first 10 bytes
+
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
 	init_imu(&imu);
+	while (calib_imu(&imu) != HAL_OK); // TODO test bias compensation
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 
 	HAL_TIM_Base_Start_IT(&htim1);
 

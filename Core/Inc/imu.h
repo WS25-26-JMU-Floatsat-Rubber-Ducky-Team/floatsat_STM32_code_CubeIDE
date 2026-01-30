@@ -17,17 +17,28 @@
 #define CTRL_REG3_M   0x22
 
 #define IMU_BUFF_LEN 6
+#define GYRO_SAMPLES 1000
 
 typedef struct IMU {
 	I2C_HandleTypeDef *hi2c;
 	uint8_t *acc_buff;
 	uint8_t *gyro_buff;
 	uint8_t *mag_buff;
+	float accel_x;
+	float accel_y;
+	float accel_z;
+	float gyro_x;
+	float gyro_y;
+	float gyro_z;
+	float gyro_x_bias;
+	float gyro_y_bias;
+	float gyro_z_bias;
 } IMU_t;
 
 
 void init_imu(IMU_t *imu);
 void parse_imu(IMU_t *imu);
+HAL_StatusTypeDef calib_imu(IMU_t *imu);
 HAL_StatusTypeDef read_imu(IMU_t *imu);
 HAL_StatusTypeDef acc_gyro_read(IMU_t *imu, uint8_t reg, uint8_t *buf, uint16_t len);
 HAL_StatusTypeDef mag_read(IMU_t *imu, uint8_t reg, uint8_t *buf, uint16_t len);
