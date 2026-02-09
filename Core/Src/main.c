@@ -21,10 +21,12 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <math.h>
 #include "motor.h"
 #include "imu.h"
 #include "communication.h"
-#include "control.h"
+#include "attitude_control.h"
+#include "attitude_estimator.h"
 
 /* USER CODE END Includes */
 
@@ -84,8 +86,9 @@ IMU_t imu = { .hi2c = &hi2c1, .acc_buff = acc_buff, .gyro_buff=gyro_buff, .mag_b
 
 uint8_t spi_rx_buf[SPI_FRAME_LEN];
 uint8_t spi_tx_buf[SPI_FRAME_LEN];
-COM_t com =
-		{ .hspi = &hspi1, .spi_rx_buf = spi_rx_buf, .spi_tx_buf = spi_tx_buf };
+COM_t com = { .hspi = &hspi1, .spi_rx_buf = spi_rx_buf, .spi_tx_buf = spi_tx_buf };
+
+measurement_t meas = {0};
 
 float rps1 = 1;         // start speed
 float target_rps1 = 20;   // end speed
@@ -129,7 +132,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 	if (hspi->Instance == SPI1){
-		comunicate(&com, &imu);
+		comunicate(&com, &imu, &meas);
 	}
 }
 
@@ -138,6 +141,10 @@ void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 	read_imu(&imu);
 }
 
+static float deg2rad(float deg)
+{
+    return deg * (float)M_PI / 180.0f;
+}
 
 /* USER CODE END 0 */
 
@@ -209,26 +216,131 @@ int main(void)
 	}
 	HAL_SPI_TransmitReceive_IT(&hspi1, spi_tx_buf, spi_rx_buf, SPI_FRAME_LEN);
 
+
+	 /* =========================
+	 * Control parameters
+	 * ========================= */
+
+	control_params_t params = {0};
+
+	/* Timing */
+	params.dt = 0.002f;  /* 500 Hz */
+
+	/* Outer (angle) PID */
+	params.angle_kp[0] = 1.0f;
+	params.angle_kp[1] = 1.0f;
+	params.angle_kp[2] = 1.0f;
+
+	params.angle_ki[0] = 0.0f;
+	params.angle_ki[1] = 0.0f;
+	params.angle_ki[2] = 0.0f;
+
+	params.max_angvel_cmd[0] = deg2rad(10.0f);
+	params.max_angvel_cmd[1] = deg2rad(10.0f);
+	params.max_angvel_cmd[2] = deg2rad(10.0f);
+
+	/* Inner (rate) PID */
+	params.rate_kp[0] = 1.0f;
+	params.rate_kp[1] = 1.0f;
+	params.rate_kp[2] = 1.0f;
+
+	params.rate_ki[0] = 0.5f;
+	params.rate_ki[1] = 0.5f;
+	params.rate_ki[2] = 0.5f;
+
+	params.rate_kd[0] = 0.0f;
+	params.rate_kd[1] = 0.0f;
+	params.rate_kd[2] = 0.0f;
+
+	/* Actuator limits */
+	params.max_motor_rpm    = 900.0f;
+	params.max_motor_torque = 0.2f;
+
+	/* =========================
+	 * Wheel axis matrix (identity)
+	 * ========================= */
+	/*
+	 * Wheel 0 → X
+	 * Wheel 1 → Y
+	 * Wheel 2 → Z
+	 */
+	params.wheel_axis[0][0] = 0.8165f;
+	params.wheel_axis[0][1] = -0.4083f;
+	params.wheel_axis[0][2] = 0.4083f;
+
+	params.wheel_axis[1][0] = 0.0f;
+	params.wheel_axis[1][1] = 0.7071f;
+	params.wheel_axis[1][2] = -0.07071f;
+
+	params.wheel_axis[2][0] = 0.5773f;
+	params.wheel_axis[2][1] = 0.5773f;
+	params.wheel_axis[2][2] = 0.5773f;
+
+	params.torque_to_rpm = params.max_motor_rpm / params.max_motor_torque;
+
+	/* =========================
+	 * Control state
+	 * ========================= */
+
+	control_state_t ctrl_state;
+	control_init(&ctrl_state, &params);
+
+	/* =========================
+	 * Estimator state
+	 * ========================= */
+
+	meas_state_t meas_state;
+	measurement_init(&meas_state, imu.acc, imu.mag);
+
+	/* =========================
+	 * Example setpoint
+	 * ========================= */
+
+	/* Setpoint: 10 deg yaw */
+	float yaw = deg2rad(10.0f);
+	quat_t q_setpoint = {
+		.w = cosf(yaw * 0.5f),
+		.x = 0.0f,
+		.y = 0.0f,
+		.z = sinf(yaw * 0.5f)
+	};
+
+	/* Optional spin command */
+	float omega_body_z_cmd = 0.0f;
+
+	/* Output */
+	vec3_t motor_rpm = {0};
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-	int time_previous = HAL_GetTick();
-
-	int t1 = 5000;
-	int target1 = 10; // max ~20
+//	int time_previous = HAL_GetTick();
+//
+//	int t1 = 5000;
+//	int target1 = 10; // max ~20
 	while (1) {
 		if (read_imu(&imu) != HAL_OK){
 			MX_I2C1_Init();
 		} else {
 			parse_imu(&imu);
 		}
-		HAL_Delay(2);
-		if (HAL_GetTick() - time_previous < t1) {
-			setTarget(&motor1, target1);
-			setTarget(&motor2, target1);
-			setTarget(&motor3, target1);
-		}
+		HAL_Delay(2); // update dt as well.
+
+		meas = measurement_update(&meas_state, &imu, params.dt);
+
+		motor_rpm = control_step(
+			&ctrl_state,
+			&params,
+			&meas.q,
+			&q_setpoint,
+			&meas.omega,
+			omega_body_z_cmd
+		);
+
+		setTarget(&motor1, motor_rpm.v[0]/60);
+		setTarget(&motor2, motor_rpm.v[1]/60);
+		setTarget(&motor3, motor_rpm.v[2]/60);
 	}
     /* USER CODE END WHILE */
 

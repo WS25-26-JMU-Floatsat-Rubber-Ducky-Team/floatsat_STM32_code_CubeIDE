@@ -18,6 +18,8 @@ volatile uint8_t rx_byte = 0;
 
 void setTarget(Motor_t *m, float target_rps)
 {
+	if (target_rps > 20.0) target_rps = 20.0;
+	if (target_rps < -20.0) target_rps = -20.0;
     m->target_rps = target_rps;
 }
 

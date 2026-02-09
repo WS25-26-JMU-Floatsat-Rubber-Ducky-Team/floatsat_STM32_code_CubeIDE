@@ -2,6 +2,7 @@
 #define __IMU_H
 
 #include "main.h"
+#include "attitude_types.h"
 
 #define LSM9DS1_AG_ADDR_READ  0xD7
 #define LSM9DS1_M_ADDR_READ   0x3D
@@ -17,23 +18,31 @@
 #define CTRL_REG3_M   0x22
 
 #define IMU_BUFF_LEN 6
-#define GYRO_SAMPLES 1000
+#define GYRO_SAMPLES 10
 
 typedef struct IMU {
 	I2C_HandleTypeDef *hi2c;
 	uint8_t *acc_buff;
 	uint8_t *gyro_buff;
 	uint8_t *mag_buff;
-	float accel_x;
-	float accel_y;
-	float accel_z;
-	float gyro_x;
-	float gyro_y;
-	float gyro_z;
+    vec3_t gyro;
+    vec3_t acc;
+    vec3_t mag;
 	float gyro_x_bias;
 	float gyro_y_bias;
 	float gyro_z_bias;
 } IMU_t;
+
+typedef struct {
+	float dt;
+	float df; // = 1/dt
+	float alpha; // between 0 and 1!
+	float beta;  // between 0 and 1!
+	float x;
+	float v;
+} FILTERS_AB;
+
+void filter_ab(FILTERS_AB *ab, float in);
 
 
 void init_imu(IMU_t *imu);
