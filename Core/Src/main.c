@@ -89,6 +89,8 @@ uint8_t spi_tx_buf[SPI_FRAME_LEN];
 COM_t com = { .hspi = &hspi1, .spi_rx_buf = spi_rx_buf, .spi_tx_buf = spi_tx_buf };
 
 measurement_t meas = {0};
+control_params_t params = {0};
+float omega_body_z_cmd = 0.0f;
 
 float rps1 = 1;         // start speed
 float target_rps1 = 20;   // end speed
@@ -132,7 +134,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 	if (hspi->Instance == SPI1){
-		comunicate(&com, &imu, &meas);
+		comunicate(&com, &imu, &meas, &params, &omega_body_z_cmd);
 	}
 }
 
@@ -192,19 +194,17 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 
+  	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+  	init_imu(&imu);
+  	while (calib_imu(&imu) != HAL_OK); // TODO test bias compensation
+  	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+
 	Commutation_Start(&motor1, rps1 * 7.0f * 6.0f);
 	Commutation_Start(&motor2, rps2 * 7.0f * 6.0f);
 	Commutation_Start(&motor3, rps3 * 7.0f * 6.0f);
 
 	uint8_t duty = 98;
 	SetDuty_TIM3_CH2(&motor1, duty);
-
-	//HAL_SPI_Receive_IT(&hspi1, spi_rx_buf, SPI_FRAME_LEN); // wait for first 10 bytes
-
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-	init_imu(&imu);
-	while (calib_imu(&imu) != HAL_OK); // TODO test bias compensation
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 
 	HAL_TIM_Base_Start_IT(&htim1);
 
@@ -221,15 +221,13 @@ int main(void)
 	 * Control parameters
 	 * ========================= */
 
-	control_params_t params = {0};
-
 	/* Timing */
 	params.dt = 0.002f;  /* 500 Hz */
 
 	/* Outer (angle) PID */
-	params.angle_kp[0] = 1.0f;
-	params.angle_kp[1] = 1.0f;
-	params.angle_kp[2] = 1.0f;
+	params.angle_kp[0] = 0.0f;
+	params.angle_kp[1] = 0.0f;
+	params.angle_kp[2] = 0.0f;
 
 	params.angle_ki[0] = 0.0f;
 	params.angle_ki[1] = 0.0f;
@@ -240,17 +238,17 @@ int main(void)
 	params.max_angvel_cmd[2] = deg2rad(10.0f);
 
 	/* Inner (rate) PID */
-	params.rate_kp[0] = 1.0f;
-	params.rate_kp[1] = 1.0f;
-	params.rate_kp[2] = 1.0f;
+	params.rate_kp[0] = 0.0f;
+	params.rate_kp[1] = 0.0f;
+	params.rate_kp[2] = 0.1f;
 
-	params.rate_ki[0] = 0.5f;
-	params.rate_ki[1] = 0.5f;
-	params.rate_ki[2] = 0.5f;
+	params.rate_ki[0] = 0.0f;
+	params.rate_ki[1] = 0.0f;
+	params.rate_ki[2] = 0.001f;
 
 	params.rate_kd[0] = 0.0f;
 	params.rate_kd[1] = 0.0f;
-	params.rate_kd[2] = 0.0f;
+	params.rate_kd[2] = 0.1f;
 
 	/* Actuator limits */
 	params.max_motor_rpm    = 900.0f;
@@ -306,7 +304,6 @@ int main(void)
 	};
 
 	/* Optional spin command */
-	float omega_body_z_cmd = 0.0f;
 
 	/* Output */
 	vec3_t motor_rpm = {0};
@@ -315,10 +312,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-//	int time_previous = HAL_GetTick();
-//
-//	int t1 = 5000;
-//	int target1 = 10; // max ~20
+	float yaw_mem = 0.0;
 	while (1) {
 		if (read_imu(&imu) != HAL_OK){
 			MX_I2C1_Init();
@@ -327,20 +321,32 @@ int main(void)
 		}
 		HAL_Delay(2); // update dt as well.
 
-		meas = measurement_update(&meas_state, &imu, params.dt);
+//		meas = measurement_update(&meas_state, &imu, params.dt);
+//
+//		motor_rpm = control_step(
+//			&ctrl_state,
+//			&params,
+//			&meas.q,
+//			&q_setpoint,
+//			&meas.omega,
+//			omega_body_z_cmd
+//		);
 
-		motor_rpm = control_step(
-			&ctrl_state,
-			&params,
-			&meas.q,
-			&q_setpoint,
-			&meas.omega,
-			omega_body_z_cmd
-		);
+		float target = omega_body_z_cmd;
+		float error = target - imu.gyro.v[2];
 
-		setTarget(&motor1, motor_rpm.v[0]/60);
-		setTarget(&motor2, motor_rpm.v[1]/60);
-		setTarget(&motor3, motor_rpm.v[2]/60);
+		yaw_mem += error * params.dt * 5.0f;  //
+		if (yaw_mem > 20.0f) yaw_mem = 20.0f;
+		if (yaw_mem < -20.0f) yaw_mem = -20.0f;
+
+		float speed = error * 0.01f + yaw_mem; // PI on motor speed -> DP on motor accel
+		setTarget(&motor1, speed);
+		setTarget(&motor2, speed);
+		setTarget(&motor3, speed);
+
+//		setTarget(&motor1, motor_rpm.v[0]/60);
+//		setTarget(&motor2, -motor_rpm.v[1]/60);
+//		setTarget(&motor3, motor_rpm.v[2]/60);
 	}
     /* USER CODE END WHILE */
 

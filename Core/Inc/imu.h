@@ -18,7 +18,7 @@
 #define CTRL_REG3_M   0x22
 
 #define IMU_BUFF_LEN 6
-#define GYRO_SAMPLES 10
+#define GYRO_SAMPLES 100
 
 typedef struct IMU {
 	I2C_HandleTypeDef *hi2c;

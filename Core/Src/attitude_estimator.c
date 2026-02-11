@@ -37,7 +37,7 @@ static quat_t eul2quat(float r, float p, float y)
 }
 
 // Acc+Mag → quaternion (absolute attitude)
-static quat_t quat_from_acc(vec3_t acc)
+static quat_t quat_from_acc(vec3_t acc, float yaw_est)
 {
     float ax=acc.v[0], ay=acc.v[1], az=acc.v[2];
 
@@ -48,7 +48,7 @@ static quat_t quat_from_acc(vec3_t acc)
     float roll  = atan2f(ay, az);
     float pitch = atan2f(-ax, sqrtf(ay*ay + az*az));
 
-    return eul2quat(roll, pitch, 3.1416f/2.0f); // yaw intentionally zero
+    return eul2quat(roll, pitch, yaw_est);
 }
 
 static float yaw_from_mag(vec3_t mag, quat_t q_tilt)
@@ -96,8 +96,13 @@ measurement_t measurement_update(
     };
     q_gyro = quat_norm(q_gyro);
 
+    // Extract current yaw from q_gyro
+	float ys = 2.0f*(q_gyro.w*q_gyro.z + q_gyro.x*q_gyro.y);
+	float yc = 1.0f - 2.0f*(q_gyro.y*q_gyro.y + q_gyro.z*q_gyro.z);
+	float yaw_est = atan2f(ys, yc);
+
     // --- Tilt correction from ACC ONLY ---
-    quat_t q_tilt = quat_from_acc(raw->acc);
+    quat_t q_tilt = quat_from_acc(raw->acc, yaw_est);
 
     // Blend roll/pitch only by nudging gyro orientation toward tilt
     const float alpha_rp = 0.02f;
@@ -109,6 +114,7 @@ measurement_t measurement_update(
     q_rp_blend.z = (1-alpha_rp)*q_gyro.z + alpha_rp*q_tilt.z;
     q_rp_blend = quat_norm(q_rp_blend);
 
+    /*
     // --- Yaw correction from MAG ONLY ---
     float yaw_mag = yaw_from_mag(raw->mag, q_tilt);
 
@@ -138,6 +144,9 @@ measurement_t measurement_update(
     // Apply yaw correction
     s->q = quat_mul(q_yaw_corr, q_rp_blend);
     s->q = quat_norm(s->q);
+    */
+
+    s->q = q_rp_blend;
 
     // Outputs
     out.q = s->q;

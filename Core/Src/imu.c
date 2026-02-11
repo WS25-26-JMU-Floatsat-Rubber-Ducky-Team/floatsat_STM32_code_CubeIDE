@@ -1,9 +1,9 @@
 #include "imu.h"
 
 
-FILTERS_AB x_rate_filter = {0.002, 1/0.002, 0.9f, 0.5f, 0.0f, 0.0f};
-FILTERS_AB y_rate_filter = {0.002, 1/0.002, 0.9f, 0.5f, 0.0f, 0.0f};
-FILTERS_AB z_rate_filter = {0.002, 1/0.002, 0.9f, 0.5f, 0.0f, 0.0f};
+FILTERS_AB x_rate_filter = {0.002, 1/0.002, 0.9f, 0.1f, 0.0f, 0.0f};
+FILTERS_AB y_rate_filter = {0.002, 1/0.002, 0.9f, 0.1f, 0.0f, 0.0f};
+FILTERS_AB z_rate_filter = {0.002, 1/0.002, 0.9f, 0.1f, 0.0f, 0.0f};
 
 
 // see https://en.wikipedia.org/wiki/Alpha_beta_filter
@@ -75,13 +75,13 @@ void parse_imu(IMU_t *imu) {
 	imu->acc.v[0] = ((float)raw_accel_y) * 0.000061; // mg/LSB to g
 	imu->acc.v[2] = ((float)raw_accel_z) * 0.000061; // mg/LSB to g
 
-	float gyro_x = ((float)raw_gyro_x) * 0.0175 * 0.1; // mdps / LSB to dps to radps
-	float gyro_y = ((float)raw_gyro_y) * 0.0175 * 0.1; // mdps / LSB to dps to radps
-	float gyro_z = ((float)raw_gyro_z) * 0.0175 * 0.1; // mdps / LSB to dps to radps
+	float gyro_x = ((float)raw_gyro_x) * 0.0175 * 0.05; // mdps / LSB to dps to magic number that works :)
+	float gyro_y = ((float)raw_gyro_y) * 0.0175 * 0.05; // mdps / LSB to dps
+	float gyro_z = ((float)raw_gyro_z) * 0.0175 * 0.05; // mdps / LSB to dps
 
-	//filter_ab(&x_rate_filter, gyro_x - imu->gyro_x_bias);
-	//filter_ab(&y_rate_filter, gyro_y - imu->gyro_y_bias);
-	//filter_ab(&z_rate_filter, gyro_z - imu->gyro_z_bias);
+	filter_ab(&x_rate_filter, gyro_x - imu->gyro_x_bias);
+	filter_ab(&y_rate_filter, gyro_y - imu->gyro_y_bias);
+	filter_ab(&z_rate_filter, gyro_z - imu->gyro_z_bias);
 	imu->gyro.v[1] = gyro_x - imu->gyro_x_bias; //-x_rate_filter.x;
 	imu->gyro.v[0] = gyro_y - imu->gyro_y_bias; //y_rate_filter.x;
 	imu->gyro.v[2] = gyro_z - imu->gyro_z_bias; //z_rate_filter.x;
@@ -118,7 +118,7 @@ HAL_StatusTypeDef calib_imu(IMU_t *imu) {
 	float gyro_z_bias_agreg = 0.0;
 
 	// warm filter
-	for (int i = 0; i < 10; i++) {
+	for (int i = 0; i < 100; i++) {
 		if (acc_gyro_read(imu, OUT_G, imu->gyro_buff, IMU_BUFF_LEN) != HAL_OK){
 			return HAL_ERROR; // imu faild stop calib
 		} else {
