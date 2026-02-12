@@ -182,6 +182,14 @@ static void allocate_torque(
     }
 }
 
+
+void motor_mix(vec3_t *motor_speed, float pitch, float roll, float yaw) {
+	motor_speed->v[0] =  0.8165f * roll + 0.0f    * pitch + 0.5773f * yaw;
+	motor_speed->v[1] = -0.4083f * roll + 0.7071f * pitch + 0.5773f * yaw;
+	motor_speed->v[2] = -0.4083f * roll - 0.7071f * pitch + 0.5773f * yaw;
+}
+
+
 vec3_t control_step(
     control_state_t        *state,
     const control_params_t *params,
@@ -204,7 +212,7 @@ vec3_t control_step(
         &omega_cmd
     );
 
-    /* Body-frame Z spin */
+    // Body-frame Z spin
     omega_cmd.v[2] += omega_body_z_cmd;
 
     rate_controller(
@@ -214,6 +222,9 @@ vec3_t control_step(
         omega_meas,
         &tau_body
     );
+
+    tau_body.v[0] = 0.0f;
+    tau_body.v[1] = 0.0f;
 
     allocate_torque(
         params,

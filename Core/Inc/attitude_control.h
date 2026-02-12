@@ -67,4 +67,8 @@ vec3_t control_step(
     float                 omega_body_z_cmd // Z spin relative to body frame
 );
 
+
+
+void motor_mix(vec3_t *motor_speed, float pitch, float roll, float yaw);
+
 #endif /* ATTITUDE_CONTROL_H */

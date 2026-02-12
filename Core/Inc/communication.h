@@ -18,5 +18,5 @@ typedef struct COM {
 } COM_t;
 
 
-void comunicate(COM_t *com, IMU_t *imu, measurement_t *meas, control_params_t *params, float *omega_body_z_cmd);
+void comunicate(COM_t *com, IMU_t *imu, measurement_t *meas, control_params_t *params, float *omega_body_z_cmd, vec3_t *motor_rpm, quat_t *q_setpoint);
 
