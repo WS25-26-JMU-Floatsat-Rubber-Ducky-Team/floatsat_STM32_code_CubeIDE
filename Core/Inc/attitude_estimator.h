@@ -22,5 +22,7 @@ measurement_t measurement_update(
 );
 
 float yaw_from_quat(quat_t *q);
+float pitch_from_quat(quat_t *q);
+float roll_from_quat(quat_t *q);
 
 #endif /* ATTITUDE_ESTIMATOR_H */

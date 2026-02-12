@@ -57,11 +57,26 @@ void measurement_init(meas_state_t *s, vec3_t acc, vec3_t mag)
     s->q.x = s->q.y = s->q.z = 0;
 }
 
+
+float pitch_from_quat(quat_t *q) {
+	// Extract current roll from q
+	float ys = 2.0f*(q->w*q->x + q->y*q->z);
+	float yc = 1.0f - 2.0f*(q->x*q->x + q->y*q->y);
+	return atan2f(ys, yc);
+}
+
+float roll_from_quat(quat_t *q) {
+	// Extract current pitch from q
+//	float a = 2.0f*(q->w*q->y - q->x*q->z);
+//	return (2.0f*atan2f(sqrtf(1 + a), sqrtf(1 - a))) - 1.5707; // 1.5707 = pi/2
+	return asinf(2.0f * (q->w * q->y - q->z * q->x));
+}
+
 float yaw_from_quat(quat_t *q) {
 	// Extract current yaw from q
 	float ys = 2.0f*(q->w*q->z + q->x*q->y);
 	float yc = 1.0f - 2.0f*(q->y*q->y + q->z*q->z);
-	float yaw_est = atan2f(ys, yc);
+	return atan2f(ys, yc);
 }
 
 measurement_t measurement_update(
