@@ -51,22 +51,17 @@ static quat_t quat_from_acc(vec3_t acc, float yaw_est)
     return eul2quat(roll, pitch, yaw_est);
 }
 
-static float yaw_from_mag(vec3_t mag, quat_t q_tilt)
-{
-    // Rotate mag into earth frame using tilt only
-    quat_t m = {0, mag.v[0], mag.v[1], mag.v[2]};
-    quat_t q_conj = {q_tilt.w, -q_tilt.x, -q_tilt.y, -q_tilt.z};
-
-    quat_t tmp = quat_mul(q_tilt, m);
-    quat_t m_earth = quat_mul(tmp, q_conj);
-
-    // Heading from horizontal components
-    return atan2f(-m_earth.y, m_earth.x);
-}
-
 void measurement_init(meas_state_t *s, vec3_t acc, vec3_t mag)
 {
-    s->q.w = 1; s->q.x = s->q.y = s->q.z = 0;
+    s->q.w = 1;
+    s->q.x = s->q.y = s->q.z = 0;
+}
+
+float yaw_from_quat(quat_t *q) {
+	// Extract current yaw from q
+	float ys = 2.0f*(q->w*q->z + q->x*q->y);
+	float yc = 1.0f - 2.0f*(q->y*q->y + q->z*q->z);
+	float yaw_est = atan2f(ys, yc);
 }
 
 measurement_t measurement_update(
@@ -87,7 +82,7 @@ measurement_t measurement_update(
         0.5f*( wx*q.y - wy*q.x + wz*q.w)
     };
 
-    // --- Gyro integration (unchanged) ---
+    // --- Gyro integration ---
     quat_t q_gyro = {
         q.w + q_dot.w*dt,
         q.x + q_dot.x*dt,
@@ -97,9 +92,7 @@ measurement_t measurement_update(
     q_gyro = quat_norm(q_gyro);
 
     // Extract current yaw from q_gyro
-	float ys = 2.0f*(q_gyro.w*q_gyro.z + q_gyro.x*q_gyro.y);
-	float yc = 1.0f - 2.0f*(q_gyro.y*q_gyro.y + q_gyro.z*q_gyro.z);
-	float yaw_est = atan2f(ys, yc);
+    float yaw_est = yaw_from_quat(&q_gyro);
 
     // --- Tilt correction from ACC ONLY ---
     quat_t q_tilt = quat_from_acc(raw->acc, yaw_est);
@@ -114,43 +107,11 @@ measurement_t measurement_update(
     q_rp_blend.z = (1-alpha_rp)*q_gyro.z + alpha_rp*q_tilt.z;
     q_rp_blend = quat_norm(q_rp_blend);
 
-    /*
-    // --- Yaw correction from MAG ONLY ---
-    float yaw_mag = yaw_from_mag(raw->mag, q_tilt);
-
-    // Extract current yaw from blended quaternion
-    float ys = 2.0f*(q_rp_blend.w*q_rp_blend.z + q_rp_blend.x*q_rp_blend.y);
-    float yc = 1.0f - 2.0f*(q_rp_blend.y*q_rp_blend.y + q_rp_blend.z*q_rp_blend.z);
-    float yaw_est = atan2f(ys, yc);
-
-    // Yaw error
-    float yaw_err = 0.0f;
-
-    // Wrap to [-pi, pi]
-    while (yaw_err > M_PI) yaw_err -= 2*M_PI;
-    while (yaw_err < -M_PI) yaw_err += 2*M_PI;
-
-    // Small yaw-only correction quaternion
-    const float alpha_yaw = 0.05f;
-    float half = 0.5f * alpha_yaw * yaw_err;
-
-    quat_t q_yaw_corr = {
-        cosf(half),
-        0,
-        0,
-        sinf(half)
-    };
-
-    // Apply yaw correction
-    s->q = quat_mul(q_yaw_corr, q_rp_blend);
-    s->q = quat_norm(s->q);
-    */
-
     s->q = q_rp_blend;
 
     // Outputs
     out.q = s->q;
-    out.omega = raw->gyro; // already rad/s
+    out.omega = raw->gyro;
 
     return out;
 }

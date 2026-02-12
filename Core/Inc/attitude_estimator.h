@@ -21,4 +21,6 @@ measurement_t measurement_update(
     float dt
 );
 
+float yaw_from_quat(quat_t *q);
+
 #endif /* ATTITUDE_ESTIMATOR_H */

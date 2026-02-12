@@ -2,20 +2,10 @@
 #define ATTITUDE_CONTROL_H
 
 #include "attitude_types.h"
+#include "attitude_estimator.h"
+#include "imu.h"
 #include <stdint.h>
-
-/* =========================
- * PID state
- * ========================= */
-
-typedef struct {
-    float integrator[3];
-    float prev_error[3];
-} pid_state_t;
-
-/* =========================
- * Control parameters
- * ========================= */
+#include "pid.h"
 
 typedef struct {
     /* Outer (angle) loop */
@@ -43,32 +33,7 @@ typedef struct {
     float torque_to_rpm;     // [RPM / Nm]
 } control_params_t;
 
-/* =========================
- * Control runtime state
- * ========================= */
-
-typedef struct {
-    pid_state_t angle_pid;
-    pid_state_t rate_pid;
-} control_state_t;
-
-/* =========================
- * API
- * ========================= */
-
-void control_init(control_state_t *state, const control_params_t *params);
-
-vec3_t control_step(
-    control_state_t       *state,
-    const control_params_t *params,
-    const quat_t          *q_current,
-    const quat_t          *q_setpoint,
-    const vec3_t          *omega_meas, // Angvel measurement across axes for inner loop propagation
-    float                 omega_body_z_cmd // Z spin relative to body frame
-);
-
-
-
+void control_step(IMU_t *imu, measurement_t *meas, control_params_t *params, float *omega_body_z_cmd, vec3_t *motor_speed, quat_t *q_setpoint);
 void motor_mix(vec3_t *motor_speed, float pitch, float roll, float yaw);
 
 #endif /* ATTITUDE_CONTROL_H */

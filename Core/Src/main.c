@@ -92,12 +92,12 @@ measurement_t meas = {0};
 control_params_t params = {0};
 float omega_body_z_cmd = 0.0f;
 quat_t q_setpoint = {
-		.w = 1.0f,
-		.x = 0.0f,
-		.y = 0.0f,
-		.z = 0.0f
-	};
-vec3_t motor_rpm = {0};
+	.w = 1.0f,
+	.x = 0.0f,
+	.y = 0.0f,
+	.z = 0.0f
+};
+vec3_t motor_speed = {0};
 
 float rps1 = 1;         // start speed
 float target_rps1 = 20;   // end speed
@@ -141,7 +141,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
 	if (hspi->Instance == SPI1){
-		comunicate(&com, &imu, &meas, &params, &omega_body_z_cmd, &motor_rpm, &q_setpoint);
+		comunicate(&com, &imu, &meas, &params, &omega_body_z_cmd, &motor_speed, &q_setpoint);
 	}
 }
 
@@ -283,31 +283,13 @@ int main(void)
 
 	params.torque_to_rpm = params.max_motor_rpm / params.max_motor_torque;
 
-	/* =========================
-	 * Control state
-	 * ========================= */
-
-	control_state_t ctrl_state;
-	control_init(&ctrl_state, &params);
-
-	/* =========================
-	 * Estimator state
-	 * ========================= */
-
 	meas_state_t meas_state;
 	measurement_init(&meas_state, imu.acc, imu.mag);
-
-	/* =========================
-	 * Example setpoint
-	 * ========================= */
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-	float pitch_mem = 0.0;
-	float roll_mem = 0.0;
-	float yaw_mem = 0.0;
 	while (1) {
 		if (read_imu(&imu) != HAL_OK){
 			MX_I2C1_Init();
@@ -318,47 +300,11 @@ int main(void)
 
 		meas = measurement_update(&meas_state, &imu, params.dt);
 
-		float pitch_target = 0.0;
-		float pitch_error = pitch_target - imu.gyro.v[0];
-		pitch_mem += pitch_error * params.dt * 0.1f;
-		if (pitch_mem > 10.0f) pitch_mem = 10.0f;
-		if (pitch_mem < -10.0f) pitch_mem = -10.0f;
-		float pitch_speed = pitch_error * 0.1f + pitch_mem; // PI on motor speed -> DP on motor accel
+		control_step(&imu, &meas, &params, &omega_body_z_cmd, &motor_speed, &q_setpoint);
 
-		float roll_target = 0.0;
-		float roll_error = roll_target - imu.gyro.v[1];
-		roll_mem += roll_error * params.dt * 0.1f;
-		if (roll_mem > 10.0f) roll_mem = 10.0f;
-		if (roll_mem < -10.0f) roll_mem = -10.0f;
-		float roll_speed = roll_error * 0.1f + roll_mem; // PI on motor speed -> DP on motor accel
-
-		// Extract current yaw from q_gyro
-		float c_ys = 2.0f*(meas.q.w*meas.q.z + meas.q.x*meas.q.y);
-		float c_yc = 1.0f - 2.0f*(meas.q.y*meas.q.y + meas.q.z*meas.q.z);
-		float c_yaw_est = atan2f(c_ys, c_yc);
-
-		float t_ys = 2.0f*(q_setpoint.w*q_setpoint.z + q_setpoint.x*q_setpoint.y);
-		float t_yc = 1.0f - 2.0f*(q_setpoint.y*q_setpoint.y + q_setpoint.z*q_setpoint.z);
-		float t_yaw = atan2f(t_ys, t_yc);
-
-		float yaw_angle_error = t_yaw - c_yaw_est;
-		float yaw_speed_setpoint = 1.0 * yaw_angle_error;
-
-		if (yaw_speed_setpoint > 3.0f) yaw_speed_setpoint = 3.0f;
-		if (yaw_speed_setpoint < -3.0f) yaw_speed_setpoint = -3.0f;
-
-		float yaw_target = yaw_angle_error;
-		float yaw_error = yaw_target - imu.gyro.v[2];
-		yaw_mem += yaw_error * params.dt * 5.0f;
-		if (yaw_mem > 20.0f) yaw_mem = 20.0f;
-		if (yaw_mem < -20.0f) yaw_mem = -20.0f;
-		float yaw_speed = yaw_error * 0.01f + yaw_mem; // PI on motor speed -> DP on motor accel
-
-		motor_mix(&motor_rpm, 0.0, 0.0, yaw_speed_setpoint);
-
-		setTarget(&motor1, motor_rpm.v[0]);
-		setTarget(&motor2, motor_rpm.v[1]);
-		setTarget(&motor3, motor_rpm.v[2]);
+		setTarget(&motor1, motor_speed.v[0]);
+		setTarget(&motor2, motor_speed.v[1]);
+		setTarget(&motor3, motor_speed.v[2]);
 
 	}
     /* USER CODE END WHILE */
